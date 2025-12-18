@@ -16,7 +16,7 @@ import {
   MapPin,
   Repeat,
 } from "lucide-react";
-import { IItem, ISlot, IBuild, ICategorizedItems } from "@/app/types";
+import { IItem, ISlot, IBuild, ICategorizedItems } from "./types";
 
 // --- HELPER ---
 const constructItemId = (

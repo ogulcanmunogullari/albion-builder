@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
-import Comp from "@/app/models/Comp";
+import Comp from "../../../models/Comp";
 
 const connectDB = async () => {
   if (mongoose.connections[0].readyState) return;

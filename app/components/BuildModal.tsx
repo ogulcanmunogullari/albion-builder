@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Search } from "lucide-react";
-import { IItem, ISlot, IBuild, ICategorizedItems } from "@/types";
-import { constructItemId } from "@/app/utils/helpers";
+
+import { ISlot, IBuild, ICategorizedItems, IItem } from "../types";
+import { constructItemId } from "../utils/helpers";
 
 interface BuildModalProps {
   isOpen: boolean;
@@ -36,8 +37,6 @@ export default function BuildModal({
     mount: "",
     food: "",
     potion: "",
-    bag: "",
-    tool: "",
   });
 
   const [selection, setSelection] = useState<SelectionState>({});
@@ -56,8 +55,6 @@ export default function BuildModal({
         mount: "",
         food: "",
         potion: "",
-        bag: "",
-        tool: "",
       };
       const newSelection: SelectionState = {};
 
