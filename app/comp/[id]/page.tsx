@@ -44,8 +44,6 @@ async function getData(compId: string) {
       mount: rawItems.filter((i) => i.category === "mount").map(formatItem),
       food: rawItems.filter((i) => i.category === "food").map(formatItem),
       potion: rawItems.filter((i) => i.category === "potion").map(formatItem),
-      bag: [],
-      tool: [],
     };
 
     const hasPassword = !!compData.password && compData.password.length > 0;
