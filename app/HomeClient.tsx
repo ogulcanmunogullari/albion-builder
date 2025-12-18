@@ -15,6 +15,7 @@ import {
   Unlock,
   MapPin,
   Repeat,
+  Coins,
 } from "lucide-react";
 import { IItem, ISlot, IBuild, ICategorizedItems } from "./types";
 
@@ -637,7 +638,7 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
         <div className="flex flex-col md:flex-row justify-between items-center bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-lg gap-4">
           <div>
             <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 to-amber-700">
-              WAR MAKER
+              Albion Composition Maker by KOMANDO35
             </h1>
           </div>
 
@@ -933,6 +934,16 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
           </div>
         )}
       </div>
+      {/* --- FOOTER (YENİ EKLENEN KISIM) --- */}
+      <footer className="mt-12 text-center text-slate-600 text-sm pb-8">
+        <p className="flex items-center justify-center gap-2">
+          <Coins size={16} className="text-yellow-600" />
+          For silver donation, use in-game mail or dm on{" "}
+          <span className="text-yellow-600 font-bold">
+            Europe Server
+          </span> to <span className="text-slate-300 font-bold">KOMANDO35</span>
+        </p>
+      </footer>
     </div>
   );
 }
