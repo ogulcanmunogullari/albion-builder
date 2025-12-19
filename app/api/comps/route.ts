@@ -39,3 +39,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function PUT(request: Request) {
+  try {
+    await connectDB();
+    const body = await request.json();
+
+    if (!body.id)
+      return NextResponse.json({ error: "ID required" }, { status: 400 });
+
+    const comp = await Comp.findById(body.id);
+    if (!comp)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    // 1. KİMLİK DOĞRULAMA (Mevcut Şifre Kontrolü)
+    if (comp.password && comp.password !== body.password) {
+      return NextResponse.json(
+        { error: "Incorrect Password!" },
+        { status: 403 }
+      );
+    }
+
+    // 2. İÇERİK GÜNCELLEME
+    comp.title = body.title;
+    comp.description = body.description || "";
+    comp.rallyPoint = body.rallyPoint || "";
+    comp.swap = body.swap || "";
+    comp.slots = body.slots;
+
+    // 3. ŞİFRE DEĞİŞTİRME/KALDIRMA (YENİ EKLENEN KISIM)
+    // Eğer frontend "nextPassword" gönderdiyse (boş string "" olsa bile), şifreyi güncelle.
+    if (body.nextPassword !== undefined) {
+      comp.password = body.nextPassword;
+    }
+
+    await comp.save();
+
+    return NextResponse.json({ success: true, id: comp._id });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

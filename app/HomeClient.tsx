@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Copy,
   Trash2,
@@ -9,15 +10,18 @@ import {
   X,
   Search,
   Eye,
-  Share2,
-  Link as LinkIcon,
+  Save,
   Lock,
   Unlock,
   MapPin,
   Repeat,
   Coins,
+  Link as LinkIcon,
+  AlertTriangle,
+  CheckSquare,
+  Square,
 } from "lucide-react";
-import { IItem, ISlot, IBuild, ICategorizedItems } from "./types";
+import { IItem, ISlot, IBuild, ICategorizedItems, IComp } from "../types";
 
 // --- HELPER ---
 const constructItemId = (
@@ -34,6 +38,14 @@ const constructItemId = (
   return newId;
 };
 
+const getDisplayName = (fullId: string, allItemsFlat: IItem[]): string => {
+  if (!fullId) return "";
+  const parts = fullId.split("_");
+  const baseSuffix = parts.slice(1).join("_").split("@")[0];
+  const found = allItemsFlat.find((i) => i.id.includes(baseSuffix));
+  return found ? found.name : fullId;
+};
+
 // --- BUILD MODAL ---
 interface BuildModalProps {
   isOpen: boolean;
@@ -43,10 +55,6 @@ interface BuildModalProps {
   allItems: ICategorizedItems;
   readOnly?: boolean;
 }
-
-type SelectionState = {
-  [key in keyof IBuild]?: { tier: number; enchant: number };
-};
 
 const BuildModal = ({
   isOpen,
@@ -67,39 +75,36 @@ const BuildModal = ({
     food: "",
     potion: "",
   });
-
-  const [selection, setSelection] = useState<SelectionState>({});
+  const [selection, setSelection] = useState<any>({});
   const [searchTerm, setSearchTerm] = useState("");
 
-  // useEffect sadece modal AÇIKSA çalışmalı (Performans ve döngü fix)
   useEffect(() => {
-    if (isOpen && slot?.build) {
-      const newTempBuild: IBuild = {
-        mainHand: "",
-        offHand: "",
-        head: "",
-        armor: "",
-        shoes: "",
-        cape: "",
-        mount: "",
-        food: "",
-        potion: "",
-      };
-      const newSelection: SelectionState = {};
+    if (isOpen && slot) {
+      const initialBuild = slot.build
+        ? { ...slot.build }
+        : {
+            mainHand: "",
+            offHand: "",
+            head: "",
+            armor: "",
+            shoes: "",
+            cape: "",
+            mount: "",
+            food: "",
+            potion: "",
+          };
+      const newSelection: any = {};
 
-      (Object.keys(slot.build) as Array<keyof IBuild>).forEach((key) => {
-        const savedId = slot.build[key];
+      (Object.keys(initialBuild) as Array<keyof IBuild>).forEach((key) => {
+        const savedId = initialBuild[key];
         if (!savedId) return;
-
         const tierMatch = savedId.match(/^T(\d+)_/);
         const tier = tierMatch ? parseInt(tierMatch[1]) : 8;
-
         const enchantParts = savedId.split("@");
         const enchant = enchantParts.length > 1 ? parseInt(enchantParts[1]) : 0;
 
         const parts = savedId.split("_");
         const baseSuffix = parts.slice(1).join("_").split("@")[0];
-
         const collection = (allItems as any)[key] || [];
         const foundBaseItem = collection.find(
           (i: IItem) =>
@@ -107,22 +112,51 @@ const BuildModal = ({
         );
 
         if (foundBaseItem) {
-          newTempBuild[key] = foundBaseItem.id;
+          initialBuild[key] = foundBaseItem.id;
           newSelection[key] = { tier, enchant };
         } else {
-          newTempBuild[key] = savedId;
           newSelection[key] = { tier, enchant };
         }
       });
-      setTempBuild(newTempBuild);
+      setTempBuild(initialBuild);
       setSelection(newSelection);
       setSearchTerm("");
     }
-  }, [isOpen, slot, allItems]); // Dependency array düzeltildi
+  }, [isOpen, slot?.id]);
 
   if (!isOpen) return null;
 
   const isTwoHanded = tempBuild.mainHand && tempBuild.mainHand.includes("2H");
+
+  const handleSaveInternal = () => {
+    const finalBuild: Partial<IBuild> = {};
+    const flattenItems = [
+      ...(allItems.mainHand || []),
+      ...(allItems.offHand || []),
+      ...(allItems.head || []),
+      ...(allItems.armor || []),
+      ...(allItems.shoes || []),
+      ...(allItems.cape || []),
+      ...(allItems.mount || []),
+      ...(allItems.food || []),
+      ...(allItems.potion || []),
+    ];
+
+    (Object.keys(tempBuild) as Array<keyof IBuild>).forEach((key) => {
+      if (key === "offHand" && isTwoHanded) {
+        finalBuild[key] = "";
+        return;
+      }
+      if (tempBuild[key]) {
+        const baseItemObj = flattenItems.find((i) => i.id === tempBuild[key]);
+        const s = selection[key] || { tier: 8, enchant: 0 };
+        finalBuild[key] = constructItemId(baseItemObj, s.tier, s.enchant) || "";
+      } else {
+        finalBuild[key] = "";
+      }
+    });
+    onSave(finalBuild as IBuild);
+  };
 
   const renderSelect = (
     label: string,
@@ -179,7 +213,7 @@ const BuildModal = ({
                   </span>
                 </>
               ) : (
-                <span className="text-slate-600 text-[10px]">None</span>
+                <span className="text-slate-600 text-[10px]"></span>
               )}
             </div>
 
@@ -229,37 +263,32 @@ const BuildModal = ({
                   Tier
                 </span>
                 <div className="flex flex-wrap bg-slate-800 rounded border border-slate-600 overflow-hidden">
-                  {[2, 3, 4, 5, 6, 7, 8].map((t) => {
-                    const isAvailable = availableTiers.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        disabled={!isAvailable}
-                        onClick={() =>
-                          isAvailable &&
-                          setSelection({
-                            ...selection,
-                            [type]: {
-                              ...(selection[type] || { enchant: 0 }),
-                              tier: t,
-                            } as any,
-                          })
-                        }
-                        className={`px-2 py-0.5 text-[10px] font-bold transition border-r border-slate-700 last:border-0 ${
-                          !isAvailable
-                            ? "bg-slate-900 text-slate-700 cursor-not-allowed"
-                            : selection[type]?.tier === t
-                            ? "bg-yellow-600 text-black"
-                            : "text-slate-400 hover:bg-slate-700 hover:text-white"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
+                  {[2, 3, 4, 5, 6, 7, 8].map((t) => (
+                    <button
+                      key={t}
+                      disabled={!availableTiers.includes(t)}
+                      onClick={() =>
+                        setSelection({
+                          ...selection,
+                          [type]: {
+                            ...(selection[type] || { enchant: 0 }),
+                            tier: t,
+                          } as any,
+                        })
+                      }
+                      className={`px-2 py-0.5 text-[10px] font-bold transition border-r border-slate-700 last:border-0 ${
+                        !availableTiers.includes(t)
+                          ? "bg-slate-900 text-slate-700 cursor-not-allowed"
+                          : selection[type]?.tier === t
+                          ? "bg-yellow-600 text-black"
+                          : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
                 </div>
               </div>
-
               {type !== "mount" && (
                 <div className="flex flex-col">
                   <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider mb-0.5">
@@ -311,36 +340,6 @@ const BuildModal = ({
     );
   };
 
-  const handleSave = () => {
-    const finalBuild: Partial<IBuild> = {};
-    const flattenItems = [
-      ...(allItems.mainHand || []),
-      ...(allItems.offHand || []),
-      ...(allItems.head || []),
-      ...(allItems.armor || []),
-      ...(allItems.shoes || []),
-      ...(allItems.cape || []),
-      ...(allItems.mount || []),
-      ...(allItems.food || []),
-      ...(allItems.potion || []),
-    ];
-
-    (Object.keys(tempBuild) as Array<keyof IBuild>).forEach((key) => {
-      if (key === "offHand" && isTwoHanded) {
-        finalBuild[key] = "";
-        return;
-      }
-      if (tempBuild[key]) {
-        const baseItemObj = flattenItems.find((i) => i.id === tempBuild[key]);
-        const s = selection[key] || { tier: 8, enchant: 0 };
-        finalBuild[key] = constructItemId(baseItemObj, s.tier, s.enchant) || "";
-      } else {
-        finalBuild[key] = "";
-      }
-    });
-    onSave(finalBuild as IBuild);
-  };
-
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 backdrop-blur-md p-2 overflow-hidden">
       <div className="bg-slate-900 p-3 rounded-xl w-full max-w-7xl border border-slate-700 shadow-2xl relative max-h-[95vh] flex flex-col">
@@ -357,7 +356,6 @@ const BuildModal = ({
             <X size={18} />
           </button>
         </div>
-
         {!readOnly && (
           <div className="mb-2 relative shrink-0">
             <Search
@@ -373,7 +371,6 @@ const BuildModal = ({
             />
           </div>
         )}
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 overflow-y-auto pr-1 custom-scrollbar grow">
           <div className="space-y-2 bg-slate-800/20 p-2 rounded h-fit">
             <h3 className="text-slate-400 font-bold mb-1 text-xs uppercase border-b border-slate-700 pb-1">
@@ -401,7 +398,6 @@ const BuildModal = ({
             {renderSelect("Potion", "potion", allItems.potion)}
           </div>
         </div>
-
         <div className="flex justify-end gap-2 mt-2 border-t border-slate-800 pt-2 shrink-0">
           <button
             onClick={onClose}
@@ -411,7 +407,7 @@ const BuildModal = ({
           </button>
           {!readOnly && (
             <button
-              onClick={handleSave}
+              onClick={handleSaveInternal}
               className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold px-8 py-2 text-sm rounded shadow-lg transition active:scale-95"
             >
               SAVE
@@ -423,14 +419,15 @@ const BuildModal = ({
   );
 };
 
-// --- MAIN COMPONENT ---
+// --- ANA COMPONENT ---
 interface HomeClientProps {
   items: ICategorizedItems;
-  initialData?: any;
+  initialData?: IComp;
 }
 
 export default function HomeClient({ items, initialData }: HomeClientProps) {
-  // HOOK SIRALAMASI DÜZELTİLDİ: Hepsi en üstte
+  const router = useRouter();
+
   const [title, setTitle] = useState(initialData?.title || "");
   const [description, setDescription] = useState(
     initialData?.description || ""
@@ -441,10 +438,13 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
     initialData?.slots || []
   );
 
-  const [passwordInput, setPasswordInput] = useState("");
   const [isLocked, setIsLocked] = useState(!!initialData?.hasPassword);
   const [unlockPassword, setUnlockPassword] = useState("");
+
   const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [removePassword, setRemovePassword] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSlotIndex, setEditingSlotIndex] = useState<number | null>(null);
@@ -458,7 +458,6 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
     }
   }, [initialData]);
 
-  // Loading kontrolü Hook'lardan SONRA yapılmalı
   if (!items || !items.mainHand)
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-950 text-white">
@@ -466,32 +465,72 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
       </div>
     );
 
-  const saveToCloud = async () => {
+  const handleSaveClick = () => {
     if (!title) return alert("Title is required!");
     if (composition.length === 0) return alert("List is empty!");
+    setShowPasswordModal(true);
+    setNewPassword("");
+    setRemovePassword(false);
+  };
 
+  const confirmSave = async () => {
     try {
+      const isUpdate = !!initialData?._id;
+      const method = isUpdate ? "PUT" : "POST";
+
+      const authPassword = unlockPassword;
+      let nextPassword = undefined;
+
+      if (removePassword) {
+        nextPassword = "";
+      } else if (newPassword) {
+        nextPassword = newPassword;
+      } else {
+        nextPassword = undefined;
+      }
+
       const res = await fetch("/api/comps", {
-        method: "POST",
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: initialData?._id,
           title,
           description,
           rallyPoint,
           swap,
-          password: passwordInput,
+          password: authPassword,
+          nextPassword: nextPassword,
           slots: composition,
         }),
       });
       const data = await res.json();
 
       if (data.success) {
-        const link = `${window.location.origin}/comp/${data.id}`;
-        setShareLink(link);
+        // STATE GÜNCELLEMELERİ (KİLİTLEME MANTIĞI BURADA)
+        if (removePassword) {
+          // Şifre kaldırıldıysa kilidi aç
+          setUnlockPassword("");
+          setIsLocked(false);
+        } else if (newPassword) {
+          // Yeni şifre konduysa hafızaya al VE KİLİTLE
+          setUnlockPassword(newPassword);
+          setIsLocked(true);
+        } else if (authPassword) {
+          // Mevcut şifreyle devam edildiyse yine KİLİTLE (Güvenlik için)
+          setIsLocked(true);
+        }
 
-        await navigator.clipboard.writeText(link);
-        alert("✅ Saved! Link copied to clipboard. Redirecting...");
-        window.location.href = `/comp/${data.id}`;
+        if (isUpdate) {
+          alert("✅ Changes Saved!");
+          setShowPasswordModal(false);
+          router.refresh();
+        } else {
+          const link = `${window.location.origin}/comp/${data.id}`;
+          setShareLink(link);
+          window.history.pushState({}, "", `/comp/${data.id}`);
+          alert("✅ Comp Created! Link is ready.");
+          setShowPasswordModal(false);
+        }
       } else {
         alert("Error: " + data.error);
       }
@@ -500,15 +539,39 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this comp permanently?"))
+      return;
+    const pwd = newPassword || unlockPassword;
+    try {
+      const res = await fetch("/api/comps/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: initialData?._id, password: pwd }),
+      });
+      if (res.ok) {
+        alert("Deleted successfully.");
+        router.push("/");
+      } else {
+        const d = await res.json();
+        alert("Error: " + d.error);
+      }
+    } catch (error) {
+      alert("Connection error");
+    }
+  };
+
   const handleUnlock = async () => {
     try {
       const res = await fetch("/api/comps/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: initialData._id, password: unlockPassword }),
+        body: JSON.stringify({
+          id: initialData?._id,
+          password: unlockPassword,
+        }),
       });
       const result = await res.json();
-
       if (result.success) {
         setIsLocked(false);
         setShowUnlockModal(false);
@@ -522,13 +585,9 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
   };
 
   const handleEditClick = (index: number) => {
-    if (isLocked) {
-      setShowUnlockModal(true);
-    } else {
-      setEditingSlotIndex(index);
-      setIsReadOnlyModal(false);
-      setIsModalOpen(true);
-    }
+    setEditingSlotIndex(index);
+    setIsReadOnlyModal(false);
+    setIsModalOpen(true);
   };
 
   const ROLES = [
@@ -545,6 +604,7 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
     "Backline Healer",
     "Melee DPS",
     "Ranged DPS",
+    "Bomb Squad",
     "Battle Mount",
   ];
 
@@ -581,36 +641,28 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
     }
   };
 
-  const getDisplayName = (fullId: string) => {
-    if (!fullId) return "";
-    const parts = fullId.split("_");
-    const baseSuffix = parts.slice(1).join("_").split("@")[0];
-    const flattenItems = [
-      ...(items.mainHand || []),
-      ...(items.offHand || []),
-      ...(items.head || []),
-      ...(items.armor || []),
-      ...(items.shoes || []),
-      ...(items.cape || []),
-      ...(items.mount || []),
-      ...(items.food || []),
-      ...(items.potion || []),
-    ];
-    const found = flattenItems.find((i) => i.id.includes(baseSuffix));
-    return found ? found.name : fullId;
-  };
+  const flattenItems = [
+    ...(items.mainHand || []),
+    ...(items.offHand || []),
+    ...(items.head || []),
+    ...(items.armor || []),
+    ...(items.shoes || []),
+    ...(items.cape || []),
+    ...(items.mount || []),
+    ...(items.food || []),
+    ...(items.potion || []),
+  ];
 
   const generateDiscordText = () => {
-    let text = `**${title.toUpperCase()}**\n\n`;
-    if (description) text += `*${description}*\n\n`;
-    if (rallyPoint) text += `📍 **Rally:** ${rallyPoint}\n\n`;
+    let text = `**${title.toUpperCase()}**\n`;
+    if (description) text += `*${description}*\n`;
+    if (rallyPoint) text += `📍 **Rally:** ${rallyPoint}\n`;
     if (swap) text += `🔄 **Swap:** ${swap}\n\n`;
-    if (shareLink) text += `🔗 **Builds Link:** <${shareLink}>\n\n`;
     composition.forEach((slot, index) => {
-      const weaponName = getDisplayName(slot.weaponId);
-      text += `${index + 1}.**${
-        slot.role
-      }** - ${weaponName} - @Player Discord Nickname\n\n`;
+      const weaponName = getDisplayName(slot.weaponId, flattenItems);
+      text += `${index + 1}) **${slot.role}** - ${
+        weaponName || "Any"
+      } - @Player Discord Nickname\n`;
     });
     return text;
   };
@@ -626,89 +678,80 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
           alt="item"
         />
         <div className="absolute bottom-full mb-1 hidden group-hover:block bg-black text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 border border-slate-600">
-          {getDisplayName(id)}
+          {getDisplayName(id, flattenItems)}
         </div>
       </div>
     );
   };
 
+  const showToolbar = isLocked || (!isLocked && initialData?._id) || shareLink;
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 font-sans">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-center bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-lg gap-4">
-          <div>
-            <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 to-amber-700">
-              Albion Composition Maker by KOMANDO35
-            </h1>
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-2 items-end md:items-center">
-            {!initialData && (
-              <input
-                type="text"
-                placeholder="Caller Password (Optional)"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                className="bg-slate-950 border border-slate-700 p-2 rounded text-sm text-slate-300 outline-none focus:border-blue-500 w-48"
-              />
-            )}
-
-            {isLocked && initialData && (
-              <div className="flex items-center gap-2 text-red-500 bg-red-900/20 px-3 py-2 rounded border border-red-900/50">
-                <Lock size={16} />{" "}
-                <span className="text-sm font-bold">LOCKED (Read-Only)</span>
-              </div>
-            )}
-            {!isLocked && initialData && (
-              <div className="flex items-center gap-2 text-green-500 bg-green-900/20 px-3 py-2 rounded border border-green-900/50">
-                <Unlock size={16} />{" "}
-                <span className="text-sm font-bold">EDITING UNLOCKED</span>
-              </div>
-            )}
-
-            <button
-              onClick={saveToCloud}
-              className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold flex items-center gap-2 transition shadow-lg shadow-blue-900/20 whitespace-nowrap"
-            >
-              <Share2 size={18} /> Save & Share
-            </button>
-          </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 font-sans flex flex-col">
+      <div className="max-w-6xl mx-auto space-y-6 grow w-full">
+        {/* HEADER */}
+        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-lg flex flex-col items-center justify-center text-center gap-2">
+          <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 to-amber-700">
+            Albion Composition Maker by KOMANDO35
+          </h1>
+          <p className="flex items-center justify-center gap-2 text-slate-500 text-sm">
+            <Coins size={14} className="text-yellow-600" />
+            For donation, use in-game mail or dm on{" "}
+            <span className="text-yellow-600 font-bold">
+              Europe Server
+            </span> to{" "}
+            <span className="text-slate-300 font-bold">KOMANDO35</span>
+          </p>
         </div>
 
-        {shareLink && (
-          <div className="bg-green-900/30 border border-green-700 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4">
-            <div className="flex items-center gap-3 text-green-400">
-              <LinkIcon />
-              <span className="font-bold">Comp Saved! Link:</span>
-            </div>
-            <div className="flex gap-2 w-full md:w-auto">
-              <input
-                readOnly
-                value={shareLink}
-                className="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm w-full md:w-96 text-slate-300"
-              />
+        {/* --- TOOLBAR --- */}
+        {showToolbar && (
+          <div className="flex gap-2 items-center bg-slate-900/50 p-2 rounded border border-slate-800">
+            {isLocked && (
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(shareLink);
-                  alert("Copied!");
-                }}
-                className="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded font-bold text-sm"
+                onClick={() => setShowUnlockModal(true)}
+                className="bg-yellow-600 hover:bg-yellow-500 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-black"
               >
-                Copy Link
+                <Unlock size={18} /> Edit (Unlock)
               </button>
+            )}
+
+            {!isLocked && initialData?._id && (
+              <button
+                onClick={handleDelete}
+                className="bg-red-700 hover:bg-red-600 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-white"
+              >
+                <Trash2 size={18} /> Delete
+              </button>
+            )}
+
+            {shareLink && (
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(generateDiscordText());
                   alert("Discord text copied!");
                 }}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded font-bold text-sm flex gap-2 items-center"
+                className="bg-indigo-600 hover:bg-indigo-500 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-white"
               >
-                <Copy size={16} /> Copy Discord Text
+                <Copy size={18} /> Copy Discord Text
               </button>
-            </div>
+            )}
+
+            {shareLink && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(shareLink);
+                  alert("Link Copied!");
+                }}
+                className="bg-green-700 hover:bg-green-600 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-white ml-auto"
+              >
+                <LinkIcon size={18} /> Comp Link
+              </button>
+            )}
           </div>
         )}
 
+        {/* DETAILS INPUTS */}
         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 space-y-4">
           <input
             value={title}
@@ -719,7 +762,7 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
                 ? "border-transparent text-slate-400"
                 : "border-slate-700"
             }`}
-            placeholder="Composition Title"
+            placeholder="Enter Title Here.."
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -773,16 +816,25 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
           </div>
         </div>
 
+        {/* PLAYER LIST */}
         <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
           <div className="p-4 bg-slate-800/50 flex justify-between items-center">
             <h3 className="font-bold text-slate-300">Player List</h3>
             {!isLocked && (
-              <button
-                onClick={() => setComposition([])}
-                className="text-red-400 text-sm flex gap-1 items-center hover:text-red-300 transition"
-              >
-                <Trash2 size={14} /> Clear
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveClick}
+                  className="text-blue-400 text-sm flex gap-1 items-center hover:text-blue-300 transition font-bold"
+                >
+                  <Save size={14} /> Save
+                </button>
+                <button
+                  onClick={() => setComposition([])}
+                  className="text-red-400 text-sm flex gap-1 items-center hover:text-red-300 transition"
+                >
+                  <Trash2 size={14} /> Clear
+                </button>
+              </div>
             )}
           </div>
           <div className="divide-y divide-slate-800">
@@ -802,7 +854,7 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
                     n[index].role = e.target.value;
                     setComposition(n);
                   }}
-                  className={`bg-slate-950 border border-slate-700 rounded p-2 text-sm font-bold text-blue-400 w-full lg:w-40 focus:border-blue-500 outline-none ${
+                  className={`bg-slate-950 border border-slate-700 rounded p-2 text-sm font-bold text-blue-400 w-32 focus:border-blue-500 outline-none ${
                     isLocked ? "opacity-70 cursor-not-allowed" : ""
                   }`}
                 >
@@ -830,10 +882,12 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
                 </div>
                 <div className="flex-1 w-full text-center lg:text-left">
                   <div className="font-bold text-slate-200 text-lg">
-                    {getDisplayName(slot.weaponId)}
+                    {getDisplayName(slot.weaponId, flattenItems)}
                   </div>
                   <div className="text-xs text-slate-500">
-                    {slot.build.armor ? getDisplayName(slot.build.armor) : ""}
+                    {slot.build.armor
+                      ? getDisplayName(slot.build.armor, items.armor || [])
+                      : ""}
                   </div>
                 </div>
                 <div className="flex gap-2 w-full lg:w-auto justify-end">
@@ -849,25 +903,25 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
                     <Eye size={18} />
                   </button>
 
-                  <button
-                    onClick={() => handleEditClick(index)}
-                    className="bg-yellow-600/10 text-yellow-500 px-4 py-2 rounded border border-yellow-600/30 hover:bg-yellow-600 hover:text-white transition flex gap-2 items-center text-sm font-medium"
-                  >
-                    {isLocked ? <Lock size={16} /> : <Edit size={16} />}{" "}
-                    {isLocked ? "Unlock" : "Edit"}
-                  </button>
-
                   {!isLocked && (
-                    <button
-                      onClick={() =>
-                        setComposition(
-                          composition.filter((_, i) => i !== index)
-                        )
-                      }
-                      className="text-slate-600 hover:text-red-500 p-2 transition"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleEditClick(index)}
+                        className="bg-yellow-600/10 text-yellow-500 px-4 py-2 rounded border border-yellow-600/30 hover:bg-yellow-600 hover:text-white transition flex gap-2 items-center text-sm font-medium"
+                      >
+                        <Edit size={16} /> Edit
+                      </button>
+                      <button
+                        onClick={() =>
+                          setComposition(
+                            composition.filter((_, i) => i !== index)
+                          )
+                        }
+                        className="text-slate-600 hover:text-red-500 p-2 transition"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -883,6 +937,7 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
           )}
         </div>
 
+        {/* MODALS */}
         <BuildModal
           isOpen={isModalOpen}
           onClose={() => {
@@ -933,12 +988,76 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
             </div>
           </div>
         )}
+
+        {showPasswordModal && (
+          <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[60] backdrop-blur-sm">
+            <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 w-full max-w-sm text-center">
+              <div className="mx-auto bg-slate-800 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-blue-500">
+                <Save size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">
+                Save Composition
+              </h3>
+              <p className="text-slate-400 mb-4 text-sm">
+                Set a password to protect edits (Optional)
+              </p>
+
+              <input
+                type="password"
+                placeholder="New Password (Optional)"
+                className={`w-full bg-slate-950 border border-slate-700 p-3 rounded text-white text-center text-lg mb-4 outline-none focus:border-blue-500 ${
+                  removePassword ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                value={newPassword}
+                disabled={removePassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+
+              {/* NEW: Remove Password Checkbox */}
+              <div
+                className="flex items-center justify-center gap-2 mb-4 cursor-pointer"
+                onClick={() =>
+                  !newPassword && setRemovePassword(!removePassword)
+                }
+              >
+                {removePassword ? (
+                  <CheckSquare className="text-red-500" />
+                ) : (
+                  <Square className="text-slate-600" />
+                )}
+                <span
+                  className={`text-sm ${
+                    removePassword ? "text-red-400 font-bold" : "text-slate-400"
+                  } ${newPassword ? "opacity-50" : ""}`}
+                >
+                  Remove password (Make Public)
+                </span>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="flex-1 py-3 text-slate-400 hover:bg-slate-800 rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmSave}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded"
+                >
+                  CONFIRM SAVE
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      {/* --- FOOTER (YENİ EKLENEN KISIM) --- */}
+
+      {/* --- FOOTER --- */}
       <footer className="mt-12 text-center text-slate-600 text-sm pb-8">
         <p className="flex items-center justify-center gap-2">
           <Coins size={16} className="text-yellow-600" />
-          For silver donation, use in-game mail or dm on{" "}
+          For donation, use in-game mail or dm on{" "}
           <span className="text-yellow-600 font-bold">
             Europe Server
           </span> to <span className="text-slate-300 font-bold">KOMANDO35</span>
