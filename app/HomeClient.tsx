@@ -21,7 +21,7 @@ import {
   CheckSquare,
   Square,
 } from "lucide-react";
-import { IItem, ISlot, IBuild, ICategorizedItems, IComp } from "../types";
+import { IItem, ISlot, IBuild, ICategorizedItems, IComp } from "./types";
 
 // --- HELPER ---
 const constructItemId = (
