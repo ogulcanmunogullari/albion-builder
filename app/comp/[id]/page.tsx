@@ -21,7 +21,6 @@ async function getData(compId: string) {
 
     const rawItems = await Item.find({}).lean<IItemDoc[]>();
 
-    // "any" hatası burada çözülüyor: i: IItemDoc
     const formatItem = (i: IItemDoc): IItem => ({
       id: i.id,
       name: i.name,
@@ -53,7 +52,10 @@ async function getData(compId: string) {
       _id: compData._id.toString(),
       password: "",
       hasPassword: hasPassword,
-      createdAt: compData.createdAt ? compData.createdAt.toISOString() : null,
+      // DÜZELTME BURADA: null yerine undefined kullanıldı
+      createdAt: compData.createdAt
+        ? compData.createdAt.toISOString()
+        : undefined,
       slots: compData.slots.map((s: any) => ({
         ...s,
         _id: s._id ? s._id.toString() : undefined,
