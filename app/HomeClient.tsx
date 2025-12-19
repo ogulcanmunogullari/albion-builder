@@ -506,17 +506,17 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
       const data = await res.json();
 
       if (data.success) {
-        // STATE GÜNCELLEMELERİ (KİLİTLEME MANTIĞI BURADA)
+        // STATE GÜNCELLEMELERİ (KİLİTLEME MANTIĞI)
         if (removePassword) {
-          // Şifre kaldırıldıysa kilidi aç
+          // Şifre kaldırıldı -> Kilit Açık
           setUnlockPassword("");
           setIsLocked(false);
-        } else if (newPassword) {
-          // Yeni şifre konduysa hafızaya al VE KİLİTLE
-          setUnlockPassword(newPassword);
-          setIsLocked(true);
-        } else if (authPassword) {
-          // Mevcut şifreyle devam edildiyse yine KİLİTLE (Güvenlik için)
+        } else {
+          // Şifre varsa (yeni veya eski) -> KİLİTLE
+          // Eğer yeni şifre koyduysak hafızaya al
+          if (newPassword) setUnlockPassword(newPassword);
+
+          // Şifre aktif olduğu için kilitle
           setIsLocked(true);
         }
 
