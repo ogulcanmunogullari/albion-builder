@@ -1,9 +1,7 @@
-// scripts/update-db.js
-import { Schema, models, model, connect, connection } from "mongoose";
-import { resolve } from "path";
-import dotenv from "dotenv";
-
-dotenv.config({ path: resolve(__dirname, "../.env.local") });
+/* eslint-disable */
+const { Schema, models, model, connect, connection } = require("mongoose");
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env.local") });
 
 const ItemSchema = new Schema({
   id: String,
@@ -48,13 +46,7 @@ async function updateDatabase() {
 
       // 1. Binekler (Zırhlı Atlar vb. dahil)
       if (id.includes("_MOUNT_")) {
-        if (
-          id.includes("ARMORED_HORSE") &&
-          (id.startsWith("T5") ||
-            id.startsWith("T6") ||
-            id.startsWith("T7") ||
-            id.startsWith("T8"))
-        )
+        if (id.includes("ARMORED_HORSE") && id.startsWith("T5"))
           category = "mount";
         else if (
           id.includes("BATTLE") ||
@@ -106,12 +98,6 @@ async function updateDatabase() {
         id.includes("_BAG") ||
         id.includes("_SATCHEL") ||
         id.includes("_TOOL_") ||
-        id.includes("TRACKING") ||
-        id.includes("ROCKHAMMER") ||
-        id.includes("WOODAXE") ||
-        id.includes("PICKAXE") ||
-        id.includes("SKINNINGKNIFE") ||
-        id.includes("SICKLE") ||
         id.includes("DEMOLITIONHAMMER") ||
         // 2. Skin ve Gereksizler
         id.includes("SKIN") ||
