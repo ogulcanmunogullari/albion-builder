@@ -205,16 +205,15 @@ export default function HomeClient({
     if (swap) text += `🔄 SWAP : ${swap}\n`;
     text += "```\n";
     // Link ve Şifre Bölümü (Yeni)
-    text += "```";
-    text += "\n";
-    text += `🔗 **BUILD LINK:** ${
+
+    text += `\n🔗 **BUILD LINK:** ${
       initialData?._id ? compUrl : "Not Saved Yet"
     }\n`;
     if (viewerPassword) {
       text += `🔑 **VIEWER PASS:** \`${viewerPassword}\` (Case Sensitive)\n`;
     }
     text += "\n";
-    text += "```\n**📊 ROLE SUMMARY:**\n";
+    text += "\n**📊 ROLE SUMMARY:**\n";
     text +=
       Object.entries(roleSummary)
         .map(([role, count]) => {
