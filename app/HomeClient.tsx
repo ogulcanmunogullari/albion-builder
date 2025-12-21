@@ -205,6 +205,8 @@ export default function HomeClient({
     if (swap) text += `🔄 SWAP : ${swap}\n`;
     text += "```\n";
     // Link ve Şifre Bölümü (Yeni)
+    text += "```";
+    text += "\n";
     text += `🔗 **BUILD LINK:** ${
       initialData?._id ? compUrl : "Not Saved Yet"
     }\n`;
