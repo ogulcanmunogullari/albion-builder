@@ -43,8 +43,6 @@ async function updateDatabase() {
       let category = null;
 
       // --- KATEGORİ BELİRLEME ---
-
-      // 1. Binekler (Zırhlı Atlar vb. dahil)
       if (id.includes("_MOUNT_")) {
         if (id.includes("ARMORED_HORSE") && id.startsWith("T5"))
           category = "mount";
@@ -77,11 +75,8 @@ async function updateDatabase() {
           !id.startsWith("T4")
         )
           category = "mount";
-      }
-      // 2. Yemek & Pot
-      else if (id.includes("_MEAL")) category = "food";
+      } else if (id.includes("_MEAL")) category = "food";
       else if (id.includes("_POTION")) category = "potion";
-      // 3. Zırh & Silahlar
       else if (id.includes("_HEAD_")) category = "head";
       else if (id.includes("_ARMOR_")) category = "armor";
       else if (id.includes("_SHOES_")) category = "shoes";
@@ -92,15 +87,18 @@ async function updateDatabase() {
 
       if (!category) return;
 
-      // --- KARA LİSTE (Bunları KESİN SİLİYORUZ) ---
+      // --- KARA LİSTE ---
       if (
-        // 1. Çanta ve Toollar (İstenmeyenler)
+        id.includes("RUBBERBAND") ||
+        id.includes("GAMEMASTER") ||
+        id.includes("GM_") ||
+        id.includes("DEBUG") ||
         id.includes("_BAG") ||
         id.includes("_SATCHEL") ||
         id.includes("_TOOL_") ||
         id.includes("DEMOLITIONHAMMER") ||
-        // 2. Skin ve Gereksizler
-        id.includes("SKIN") ||
+        // DÜZELTME 1: Resistance Potion (STONESKIN) silinmesin
+        (id.includes("SKIN") && !id.includes("STONESKIN")) ||
         id.includes("COSTUME") ||
         id.includes("VANITY") ||
         id.includes("UNLOCK") ||
@@ -110,7 +108,6 @@ async function updateDatabase() {
         id.includes("FOUNDER") ||
         id.includes("STARTERPACK") ||
         id.includes("BATRIDER") ||
-        // 3. Diğer Çöpler
         id.includes("ARTIFACT") ||
         id.includes("ARTEFACT") ||
         id.includes("TOKEN") ||
@@ -119,7 +116,9 @@ async function updateDatabase() {
         id.includes("FARM") ||
         id.includes("RECIPE") ||
         id.includes("GATHERER") ||
-        id.includes("FISH") ||
+        // DÜZELTME 2: "FISH" filtresi kaldırıldı (Crab Omelette ve Fish Sandwich için)
+        // id.includes("FISH") ||
+
         id.includes("ROYALE") ||
         id.includes("NONTRADABLE") ||
         id.includes("@") ||
@@ -137,13 +136,11 @@ async function updateDatabase() {
         cleanName = cleanName.replace(potionPrefixesRegex, "");
       }
 
-      // Tier Bulma
       let tier = 0;
       const tierMatch = id.match(/^T(\d+)_/);
       if (tierMatch) tier = parseInt(tierMatch[1]);
       else tier = 8;
 
-      // Gruplama
       if (!groupedItems[cleanName]) {
         groupedItems[cleanName] = {
           id: id,
@@ -155,7 +152,6 @@ async function updateDatabase() {
 
       groupedItems[cleanName].tiers.add(tier);
 
-      // Referans ID güncelleme
       const currentStoredTierMatch =
         groupedItems[cleanName].id.match(/^T(\d+)_/);
       const currentStoredTier = currentStoredTierMatch
@@ -178,9 +174,7 @@ async function updateDatabase() {
     console.log(`🧹 Veritabanı temizleniyor...`);
     await Item.deleteMany({});
 
-    console.log(
-      `📥 ${itemsToInsert.length} adet TEMİZ item (Skin/Bag/Tool yok) kaydediliyor...`
-    );
+    console.log(`📥 ${itemsToInsert.length} adet TEMİZ item kaydediliyor...`);
     await Item.insertMany(itemsToInsert);
 
     console.log("🎉 İŞLEM BAŞARILI!");
