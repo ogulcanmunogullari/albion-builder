@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
-import { ISlot } from "../types";
+import { ISlot } from "@/types";
 
 interface ICompDoc extends Document {
   title: string;

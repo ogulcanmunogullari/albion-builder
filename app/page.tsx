@@ -1,7 +1,7 @@
-import HomeClient from "./HomeClient";
+import HomeClient from "@/HomeClient";
 import mongoose from "mongoose";
-import Item, { IItemDoc } from "./models/Item";
-import { ICategorizedItems, IItem } from "./types";
+import Item, { IItemDoc } from "@/models/Item";
+import { ICategorizedItems, IItem } from "@/types";
 
 const connectDB = async () => {
   if (mongoose.connections[0].readyState) return;

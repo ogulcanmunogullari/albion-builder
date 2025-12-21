@@ -1,16 +1,18 @@
 // scripts/update-db.js
-const mongoose = require("mongoose");
-const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, "../.env.local") });
+import { Schema, models, model, connect, connection } from "mongoose";
+import { resolve } from "path";
+import dotenv from "dotenv";
 
-const ItemSchema = new mongoose.Schema({
+dotenv.config({ path: resolve(__dirname, "../.env.local") });
+
+const ItemSchema = new Schema({
   id: String,
   name: String,
   category: String,
   tier: { type: Number, default: 8 },
   validTiers: { type: [Number], default: [] },
 });
-const Item = mongoose.models.Item || mongoose.model("Item", ItemSchema);
+const Item = models.Item || model("Item", ItemSchema);
 
 const SOURCE_URL =
   "https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/formatted/items.json";
@@ -23,7 +25,7 @@ async function updateDatabase() {
 
   try {
     console.log("🔌 Veritabanına bağlanılıyor...");
-    await mongoose.connect(process.env.MONGODB_URI);
+    await connect(process.env.MONGODB_URI);
 
     console.log("⏳ Veriler çekiliyor...");
     const response = await fetch(SOURCE_URL);
@@ -196,7 +198,7 @@ async function updateDatabase() {
     await Item.insertMany(itemsToInsert);
 
     console.log("🎉 İŞLEM BAŞARILI!");
-    await mongoose.connection.close();
+    await connection.close();
   } catch (error) {
     console.error("❌ Hata:", error);
     process.exit(1);

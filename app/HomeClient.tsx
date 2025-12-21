@@ -17,7 +17,6 @@ import {
   Repeat,
   Coins,
   Link as LinkIcon,
-  AlertTriangle,
   CheckSquare,
   Square,
 } from "lucide-react";

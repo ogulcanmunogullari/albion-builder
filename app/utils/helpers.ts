@@ -1,4 +1,4 @@
-import { IItem } from "../types";
+import { IItem } from "@/types";
 
 export const constructItemId = (
   baseItem: IItem | undefined,
