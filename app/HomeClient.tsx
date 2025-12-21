@@ -173,6 +173,8 @@ export default function HomeClient({
 
   // --- DISCORD KOPYALAMA ---
   const handleCopyTemplate = () => {
+    const baseUrl = window.location.origin;
+    const compUrl = `${baseUrl}/comp/${initialData?._id}`;
     const roleConfig: Record<string, { emoji: string; label: string }> = {
       Caller: { emoji: "📢", label: "Caller" },
       Tank: { emoji: "🛡️", label: "Tank" },
@@ -201,6 +203,15 @@ export default function HomeClient({
     let text = `# ⚔️ ${title.toUpperCase()} ⚔️\n\`\`\`\n`;
     if (rallyPoint) text += `📍 RALLY: ${rallyPoint}\n`;
     if (swap) text += `🔄 SWAP : ${swap}\n`;
+    text += "```\n";
+    // Link ve Şifre Bölümü (Yeni)
+    text += `🔗 **BUILD LINK:** ${
+      initialData?._id ? compUrl : "Not Saved Yet"
+    }\n`;
+    if (viewerPassword) {
+      text += `🔑 **VIEWER PASS:** \`${viewerPassword}\` (Case Sensitive)\n`;
+    }
+    text += "\n";
     text += "```\n**📊 ROLE SUMMARY:**\n";
     text +=
       Object.entries(roleSummary)
