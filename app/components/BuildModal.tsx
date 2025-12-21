@@ -1,13 +1,20 @@
-// components/BuildModal.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X, Search } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  X,
+  Search,
+  ChevronRight,
+  Shield,
+  Sword,
+  Shirt,
+  Trash2,
+  LucideIcon,
+} from "lucide-react";
 
-// Tipleri içe aktarıyoruz (senin types/index.ts dosyanla uyumlu)
 import { ISlot, IBuild, ICategorizedItems, IItem } from "@/types";
 import { constructItemId } from "@/utils/helpers";
-import Image from "next/image";
+import ItemLoader from "@/components/ItemLoader";
 
 interface BuildModalProps {
   isOpen: boolean;
@@ -18,11 +25,17 @@ interface BuildModalProps {
   readOnly?: boolean;
 }
 
-// "any" yerine kullanacağımız özel tip:
-// Bu, "SelectionState'in her anahtarı (mainHand, head vb.), tier ve enchant tutan bir objedir" demek.
-type SelectionState = {
-  [key in keyof IBuild]?: { tier: number; enchant: number };
-};
+const SLOT_CONFIG: { key: keyof IBuild; label: string; icon: LucideIcon }[] = [
+  { key: "mainHand", label: "Main Hand", icon: Sword },
+  { key: "offHand", label: "Off Hand", icon: Shield },
+  { key: "head", label: "Head", icon: Shirt },
+  { key: "armor", label: "Armor", icon: Shirt },
+  { key: "shoes", label: "Shoes", icon: Shirt },
+  { key: "cape", label: "Cape", icon: Shirt },
+  { key: "mount", label: "Mount", icon: Shirt },
+  { key: "potion", label: "Potion", icon: Shirt },
+  { key: "food", label: "Food", icon: Shirt },
+];
 
 export default function BuildModal({
   isOpen,
@@ -32,7 +45,6 @@ export default function BuildModal({
   allItems,
   readOnly = false,
 }: BuildModalProps) {
-  // Varsayılan boş build
   const defaultBuild: IBuild = {
     mainHand: "",
     offHand: "",
@@ -45,377 +57,395 @@ export default function BuildModal({
     potion: "",
   };
 
+  // State Tanımlamaları
   const [tempBuild, setTempBuild] = useState<IBuild>(defaultBuild);
-  const [selection, setSelection] = useState<SelectionState>({});
+  const [activeSlot, setActiveSlot] = useState<keyof IBuild>("mainHand");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedTier, setSelectedTier] = useState<number>(8);
+  const [selectedEnchant, setSelectedEnchant] = useState<number>(0);
 
+  const isSpecialSlot = ["mount", "food", "potion"].includes(activeSlot);
+
+  // --- PROBLEM ÇÖZÜMÜ: useEffect Optimizasyonu ---
+  // Tek bir if kontrolü ile tüm state'leri aynı anda güncelleyerek render döngüsünü engelleriz.
   useEffect(() => {
-    if (isOpen && slot?.build) {
-      const newTempBuild: IBuild = { ...defaultBuild };
-      const newSelection: SelectionState = {};
+    // Modal kapalıysa hiçbir şey yapma
+    if (!isOpen) return;
 
-      // Slot build içindeki her bir key üzerinde dönüyoruz
-      (Object.keys(slot.build) as Array<keyof IBuild>).forEach((key) => {
-        const savedId = slot.build[key];
-        if (!savedId) return;
+    // 1. Hedef veriyi hazırla (slot varsa doldur, yoksa boşalt)
+    const targetBuild = slot?.build
+      ? { ...defaultBuild, ...slot.build }
+      : defaultBuild;
 
-        // ID'den Tier ve Enchantment bilgisini ayıkla
-        const tierMatch = savedId.match(/^T(\d+)_/);
-        const tier = tierMatch ? parseInt(tierMatch[1]) : 8;
+    // 2. KRİTİK KONTROL: Eğer mevcut tempBuild zaten hedef veriyle aynıysa güncelleme yapma!
+    // Bu kontrol image_c300a2.png'deki "cascading renders" hatasını kesin olarak çözer.
+    if (JSON.stringify(tempBuild) !== JSON.stringify(targetBuild)) {
+      setTempBuild(targetBuild);
 
-        const enchantParts = savedId.split("@");
-        const enchant = enchantParts.length > 1 ? parseInt(enchantParts[1]) : 0;
+      // Resetleme işlemleri sadece modal ilk açıldığında veya slot değiştiğinde yapılır
+      setSearchTerm("");
+      setActiveSlot("mainHand");
+      setSelectedTier(8);
+      setSelectedEnchant(0);
+    }
 
-        const parts = savedId.split("_");
-        // Base suffix bulma (örn: MAIN_SWORD)
-        const baseSuffix = parts.slice(1).join("_").split("@")[0];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, slot]);
 
-        // --- KRİTİK DÜZELTME (any KALDIRILDI) ---
-        // TypeScript'e 'key'in allItems içinde kesinlikle var olduğunu söylüyoruz.
-        const collection = allItems[key as keyof ICategorizedItems] || [];
+  // --- 1. VERİ İŞLEME ---
+  const processedItems = useMemo(() => {
+    const rawCollection = allItems[activeSlot as keyof ICategorizedItems] || [];
+    if (!isOpen) return {};
 
-        // Koleksiyon içinde bu suffix'e sahip item'ı bul
-        const foundBaseItem = collection.find(
-          (i: IItem) =>
-            i.id.includes(`_${baseSuffix}`) || i.id.endsWith(baseSuffix)
+    const filtered = searchTerm
+      ? rawCollection.filter((item) =>
+          item.name.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : rawCollection;
+
+    const uniqueItemsMap = new Map<string, IItem>();
+
+    filtered.forEach((item) => {
+      const baseId = item.id.split("@")[0].replace(/^T\d+_/, "");
+      const key = `${baseId}|${item.subCategory}`;
+
+      if (!uniqueItemsMap.has(key)) {
+        uniqueItemsMap.set(key, {
+          ...item,
+          validTiers: item.validTiers?.length ? item.validTiers : [item.tier],
+        });
+      } else {
+        const existing = uniqueItemsMap.get(key)!;
+        existing.validTiers = Array.from(
+          new Set([
+            ...(existing.validTiers || []),
+            ...(item.validTiers || [item.tier]),
+          ])
+        ).sort((a, b) => a - b);
+        existing.maxEnchantment = Math.max(
+          existing.maxEnchantment || 0,
+          item.maxEnchantment || 0
+        );
+        existing.minEnchantment = Math.min(
+          existing.minEnchantment || 0,
+          item.minEnchantment || 0
         );
 
-        if (foundBaseItem) {
-          newTempBuild[key] = foundBaseItem.id;
-          newSelection[key] = { tier, enchant };
-        } else {
-          // Eğer veritabanında bulamazsak (eski veri vs.) olduğu gibi koy
-          newTempBuild[key] = savedId;
-          newSelection[key] = { tier, enchant };
+        if (item.tier > existing.tier) {
+          existing.id = item.id;
+          existing.tier = item.tier;
         }
-      });
-
-      // --- PERFORMANS DÜZELTMESİ ---
-      // Eğer hesaplanan veri, şu anki state ile aynıysa güncelleme yapma (Loop'u engeller)
-      if (JSON.stringify(tempBuild) !== JSON.stringify(newTempBuild)) {
-        setTempBuild(newTempBuild);
-        setSelection(newSelection);
-        setSearchTerm("");
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, slot, allItems]); // tempBuild dependency'den çıkarıldı
-
-  if (!isOpen) return null;
-
-  const isTwoHanded = tempBuild.mainHand && tempBuild.mainHand.includes("2H");
-
-  const handleSave = () => {
-    const finalBuild: Partial<IBuild> = {};
-
-    // Tüm itemleri tek bir listede birleştir (Arama yapmak için)
-    const flattenItems: IItem[] = [
-      ...(allItems.mainHand || []),
-      ...(allItems.offHand || []),
-      ...(allItems.head || []),
-      ...(allItems.armor || []),
-      ...(allItems.shoes || []),
-      ...(allItems.cape || []),
-      ...(allItems.mount || []),
-      ...(allItems.food || []),
-      ...(allItems.potion || []),
-    ];
-
-    (Object.keys(tempBuild) as Array<keyof IBuild>).forEach((key) => {
-      // Çift el silah varsa offhand'i boşalt
-      if (key === "offHand" && isTwoHanded) {
-        finalBuild[key] = "";
-        return;
-      }
-
-      if (tempBuild[key]) {
-        const baseItemObj = flattenItems.find((i) => i.id === tempBuild[key]);
-        const s = selection[key] || { tier: 8, enchant: 0 };
-        // Helper fonksiyonu kullanarak final ID'yi oluştur
-        finalBuild[key] = constructItemId(baseItemObj, s.tier, s.enchant) || "";
-      } else {
-        finalBuild[key] = "";
       }
     });
 
-    onSave(finalBuild as IBuild);
+    let finalItems = Array.from(uniqueItemsMap.values());
+    if (!isSpecialSlot) {
+      finalItems = finalItems.filter((item) =>
+        item.validTiers?.includes(selectedTier)
+      );
+    }
+
+    const groups: Record<string, IItem[]> = {};
+    finalItems.forEach((item) => {
+      const g = item.subCategory || "Other";
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(item);
+    });
+
+    return Object.keys(groups)
+      .sort()
+      .reduce((obj, key) => {
+        obj[key] = groups[key];
+        return obj;
+      }, {} as Record<string, IItem[]>);
+  }, [allItems, activeSlot, searchTerm, selectedTier, isSpecialSlot, isOpen]);
+
+  const isTwoHanded = tempBuild.mainHand?.includes("2H");
+
+  // --- 2. HESAPLAMA ---
+  const calculateItemProps = (item: IItem) => {
+    const targetTier = isSpecialSlot
+      ? item.validTiers?.length
+        ? Math.max(...item.validTiers)
+        : item.tier
+      : item.validTiers?.includes(selectedTier)
+      ? selectedTier
+      : Math.max(...(item.validTiers || [item.tier]));
+
+    const maxEnch = ["food", "potion"].includes(item.category)
+      ? 3
+      : item.category === "mount"
+      ? 0
+      : 4;
+    const targetEnchant = Math.min(
+      Math.max(selectedEnchant, item.minEnchantment || 0),
+      maxEnch
+    );
+
+    let fullId = constructItemId(item, targetTier, targetEnchant);
+    if (targetEnchant === 0 && fullId?.includes("@"))
+      fullId = fullId.split("@")[0];
+
+    return {
+      fullId: fullId || item.id,
+      displayTier: targetTier,
+      displayEnchant: targetEnchant,
+    };
   };
 
-  // Select Render Fonksiyonu
-  const renderSelect = (
-    label: string,
-    type: keyof IBuild, // Burası artık IBuild anahtarı olmak zorunda
-    collection: IItem[] = []
-  ) => {
-    const safeCollection = collection || [];
-    const filteredCollection = safeCollection.filter((item) =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    const currentSelection = selection[type] || { tier: 8, enchant: 0 };
-    const currentBaseItemObj = safeCollection.find(
-      (i) => i.id === tempBuild[type]
-    );
-
-    const availableTiers =
-      currentBaseItemObj?.validTiers && currentBaseItemObj.validTiers.length > 0
-        ? currentBaseItemObj.validTiers
-        : [2, 3, 4, 5, 6, 7, 8];
-
-    const displayId = currentBaseItemObj
-      ? constructItemId(
-          currentBaseItemObj,
-          currentSelection.tier,
-          currentSelection.enchant
-        )
-      : null;
-
-    return (
-      <div
-        className={`mb-3 p-2 rounded border ${
-          readOnly
-            ? "bg-slate-800/20 border-slate-800"
-            : "bg-slate-700/40 border-slate-600"
-        }`}
-      >
-        <label className="block text-yellow-500 text-xs font-bold mb-1">
-          {label}
-        </label>
-        <div className="flex flex-col gap-2">
-          {/* GÖRSEL + SELECT */}
-          <div className="flex items-center gap-2">
-            <div className="relative w-12 h-12 bg-black/40 rounded border border-slate-600 flex items-center justify-center shrink-0">
-              {displayId ? (
-                <>
-                  <Image
-                    src={`https://render.albiononline.com/v1/item/${displayId}?quality=4`}
-                    alt={label}
-                    width={48} // w-12 = 48px
-                    height={48}
-                    className="object-contain p-0.5"
-                    unoptimized // <--- KRİTİK NOKTA: Vercel kotasını yememesi için
-                  />
-                  <span className="absolute bottom-0 right-0 bg-black text-white text-[9px] px-1 font-bold leading-none">
-                    {currentSelection.tier}.{currentSelection.enchant}
-                  </span>
-                </>
-              ) : (
-                <span className="text-slate-600 text-[10px]">None</span>
-              )}
-            </div>
-
-            <select
-              value={tempBuild[type] || ""}
-              disabled={readOnly}
-              onChange={(e) => {
-                const newItemId = e.target.value;
-                const newItem = safeCollection.find((i) => i.id === newItemId);
-                let newTier = selection[type]?.tier || 8;
-
-                // Seçilen yeni item'ın tier'ı mevcut tier ile uyumlu mu kontrol et
-                if (
-                  newItem &&
-                  newItem.validTiers &&
-                  newItem.validTiers.length > 0
-                ) {
-                  if (!newItem.validTiers.includes(newTier))
-                    newTier = newItem.validTiers[newItem.validTiers.length - 1];
-                }
-
-                setTempBuild({ ...tempBuild, [type]: newItemId });
-                setSelection({
-                  ...selection,
-                  [type]: {
-                    ...(selection[type] || { enchant: 0 }),
-                    tier: newTier,
-                  },
-                });
-              }}
-              className={`flex-1 bg-slate-800 border border-slate-600 text-white p-1.5 text-sm rounded outline-none w-full ${
-                readOnly ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              <option value="">
-                {readOnly && !tempBuild[type] ? "Empty" : `-- Select --`}
-              </option>
-              {filteredCollection.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* TIER & ENCHANT BUTTONS */}
-          {tempBuild[type] && !readOnly && (
-            <div className="flex gap-2 flex-wrap">
-              <div className="flex flex-col">
-                <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider mb-0.5">
-                  Tier
-                </span>
-                <div className="flex flex-wrap bg-slate-800 rounded border border-slate-600 overflow-hidden">
-                  {[2, 3, 4, 5, 6, 7, 8].map((t) => {
-                    const isAvailable = availableTiers.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        disabled={!isAvailable}
-                        onClick={() =>
-                          isAvailable &&
-                          setSelection({
-                            ...selection,
-                            [type]: {
-                              ...(selection[type] || { tier: 8, enchant: 0 }),
-                              tier: t,
-                            },
-                          })
-                        }
-                        className={`px-2 py-0.5 text-[10px] font-bold transition border-r border-slate-700 last:border-0 ${
-                          !isAvailable
-                            ? "bg-slate-900 text-slate-700 cursor-not-allowed"
-                            : selection[type]?.tier === t
-                            ? "bg-yellow-600 text-black"
-                            : "text-slate-400 hover:bg-slate-700 hover:text-white"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {type !== "mount" && (
-                <div className="flex flex-col">
-                  <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider mb-0.5">
-                    Enchant
-                  </span>
-                  <div className="flex flex-wrap bg-slate-800 rounded border border-slate-600 overflow-hidden">
-                    {[0, 1, 2, 3, 4].map((e) => (
-                      <button
-                        key={e}
-                        onClick={() =>
-                          setSelection({
-                            ...selection,
-                            [type]: {
-                              ...(selection[type] || { tier: 8, enchant: 0 }),
-                              enchant: e,
-                            },
-                          })
-                        }
-                        className={`px-2 py-0.5 text-[10px] font-bold transition border-r border-slate-700 last:border-0 ${
-                          selection[type]?.enchant === e
-                            ? "brightness-110 shadow-inner"
-                            : "text-slate-400 hover:bg-slate-700"
-                        }`}
-                        style={
-                          selection[type]?.enchant === e
-                            ? {
-                                backgroundColor: [
-                                  "#64748b",
-                                  "#16a34a",
-                                  "#2563eb",
-                                  "#9333ea",
-                                  "#facc15",
-                                ][e],
-                                color: e === 4 ? "black" : "white",
-                              }
-                            : {}
-                        }
-                      >
-                        .{e}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  const handleSave = () => {
+    const finalBuild = { ...tempBuild };
+    if (isTwoHanded) finalBuild.offHand = "";
+    onSave(finalBuild);
   };
+
+  const clearSlot = (e: React.MouseEvent, key: keyof IBuild) => {
+    e.stopPropagation();
+    setTempBuild({ ...tempBuild, [key]: "" });
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 backdrop-blur-md p-2 overflow-hidden">
-      <div className="bg-slate-900 p-3 rounded-xl w-full max-w-7xl border border-slate-700 shadow-2xl relative max-h-[95vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 backdrop-blur-md p-2 lg:p-8">
+      <div className="bg-slate-900 w-full max-w-6xl h-[90vh] rounded-2xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden">
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-2 shrink-0">
+        <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-slate-900/50">
           <div>
-            <h2 className="text-lg font-bold text-yellow-500">
-              {readOnly ? "View:" : "Edit:"} {slot?.role}
+            <h2 className="text-xl font-bold text-yellow-500 uppercase italic tracking-tighter">
+              {readOnly ? "View" : "Edit"} Build
             </h2>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+              {slot?.role || "Select Slot"}
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1 bg-slate-800 rounded hover:bg-red-600 hover:text-white transition"
+            className="p-2 hover:bg-slate-800 rounded-full transition text-slate-400 hover:text-white"
           >
-            <X size={18} />
+            <X size={24} />
           </button>
         </div>
 
-        {/* SEARCH BAR (Sadece Edit modunda) */}
-        {!readOnly && (
-          <div className="mb-2 relative shrink-0">
-            <Search
-              className="absolute left-3 top-2.5 text-slate-500"
-              size={14}
-            />
-            <input
-              type="text"
-              placeholder="Search Items..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 p-1.5 pl-8 rounded text-sm text-slate-200 focus:border-yellow-500 outline-none"
-            />
+        <div className="flex flex-1 overflow-hidden flex-col lg:flex-row">
+          {/* LEFT: SLOTS */}
+          <div className="w-full lg:w-72 bg-slate-950/50 border-r border-slate-800 p-3 overflow-y-auto shrink-0">
+            <div className="space-y-1.5">
+              {SLOT_CONFIG.map((conf) => {
+                const isActive = activeSlot === conf.key;
+                const displayId = tempBuild[conf.key];
+                const isDisabled = conf.key === "offHand" && isTwoHanded;
+                return (
+                  <div
+                    key={conf.key}
+                    onClick={() => !isDisabled && setActiveSlot(conf.key)}
+                    className={`relative flex items-center gap-2.5 p-2 rounded-xl border transition cursor-pointer select-none ${
+                      isDisabled ? "opacity-20 cursor-not-allowed" : ""
+                    } ${
+                      isActive
+                        ? "bg-slate-800 border-yellow-500/50"
+                        : "bg-slate-900 border-slate-800"
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded bg-black border border-slate-700 flex items-center justify-center relative overflow-hidden shrink-0">
+                      {displayId ? (
+                        <>
+                          <ItemLoader
+                            src={`https://render.albiononline.com/v1/item/${displayId}?quality=4`}
+                            alt={conf.label}
+                            size={44}
+                            className="p-1"
+                          />
+                          {!readOnly && (
+                            <div
+                              onClick={(e) => clearSlot(e, conf.key)}
+                              className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
+                            >
+                              <Trash2 size={16} className="text-red-500" />
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <conf.icon className="text-slate-700" size={20} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[9px] text-slate-500 font-black uppercase">
+                        {conf.label}
+                      </div>
+                      <div className="text-[11px] text-slate-200 truncate font-bold uppercase tracking-tight">
+                        {displayId
+                          ? Object.values(allItems)
+                              .flat()
+                              .find((i) =>
+                                displayId.includes(
+                                  i.id.split("@")[0].replace(/^T\d+_/, "")
+                                )
+                              )?.name || "Selected"
+                          : "Empty"}
+                      </div>
+                    </div>
+                    {isActive && (
+                      <ChevronRight className="text-yellow-500" size={16} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        )}
 
-        {/* CONTENT GRID */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 overflow-y-auto pr-1 custom-scrollbar grow">
-          <div className="space-y-2 bg-slate-800/20 p-2 rounded h-fit">
-            <h3 className="text-slate-400 font-bold mb-1 text-xs uppercase border-b border-slate-700 pb-1">
-              ⚔️ Weapons & Cape
-            </h3>
-            {renderSelect("Main Hand", "mainHand", allItems.mainHand)}
-            {!isTwoHanded &&
-              renderSelect("Off Hand", "offHand", allItems.offHand)}
-            {renderSelect("Cape", "cape", allItems.cape)}
-          </div>
-          <div className="space-y-2 bg-slate-800/20 p-2 rounded h-fit">
-            <h3 className="text-slate-400 font-bold mb-1 text-xs uppercase border-b border-slate-700 pb-1">
-              🛡️ Armor Set
-            </h3>
-            {renderSelect("Head", "head", allItems.head)}
-            {renderSelect("Armor", "armor", allItems.armor)}
-            {renderSelect("Shoes", "shoes", allItems.shoes)}
-          </div>
-          <div className="space-y-2 bg-slate-800/20 p-2 rounded h-fit">
-            <h3 className="text-slate-400 font-bold mb-1 text-xs uppercase border-b border-slate-700 pb-1">
-              🐎 Inventory & Mount
-            </h3>
-            {renderSelect("Mount", "mount", allItems.mount)}
-            {renderSelect("Food", "food", allItems.food)}
-            {renderSelect("Potion", "potion", allItems.potion)}
+          {/* MAIN GRID */}
+          <div className="flex-1 flex flex-col bg-slate-900 relative">
+            {!readOnly && (
+              <div className="p-4 border-b border-slate-800 flex flex-col gap-4 bg-slate-900">
+                <div className="relative">
+                  <Search
+                    className="absolute left-3 top-3 text-slate-500"
+                    size={18}
+                  />
+                  <input
+                    type="text"
+                    placeholder={`Search ${activeSlot}...`}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 p-2.5 pl-10 rounded-xl text-slate-200 focus:border-yellow-500 outline-none uppercase text-xs font-bold"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-4 items-center">
+                  {!isSpecialSlot && (
+                    <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                      <span className="text-[10px] font-black text-slate-500 px-2 uppercase">
+                        Tier
+                      </span>
+                      <div className="flex">
+                        {[4, 5, 6, 7, 8].map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setSelectedTier(t)}
+                            className={`w-8 h-7 text-xs font-bold rounded ${
+                              selectedTier === t
+                                ? "bg-slate-700 text-white"
+                                : "text-slate-500 hover:text-slate-300"
+                            }`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {activeSlot !== "mount" && (
+                    <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                      <span className="text-[10px] font-black text-slate-500 px-2 uppercase">
+                        Ench
+                      </span>
+                      <div className="flex gap-1">
+                        {(["food", "potion"].includes(activeSlot)
+                          ? [0, 1, 2, 3]
+                          : [0, 1, 2, 3, 4]
+                        ).map((e) => (
+                          <button
+                            key={e}
+                            onClick={() => setSelectedEnchant(e)}
+                            className={`w-7 h-7 text-xs font-bold rounded ${
+                              selectedEnchant === e
+                                ? "brightness-125 border border-white/20"
+                                : "text-slate-500"
+                            }`}
+                            style={{
+                              backgroundColor:
+                                selectedEnchant === e
+                                  ? [
+                                      "#475569",
+                                      "#166534",
+                                      "#1e40af",
+                                      "#6b21a8",
+                                      "#ca8a04",
+                                    ][e]
+                                  : "#0f172a",
+                            }}
+                          >
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+              {Object.entries(processedItems).map(([category, items]) => (
+                <div key={category} className="mb-6">
+                  <h4 className="text-slate-500 font-black uppercase text-[10px] tracking-[0.2em] mb-3 border-b border-slate-800/50 pb-1 sticky top-0 bg-slate-900 z-10">
+                    {category}
+                  </h4>
+                  <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                    {items.map((item) => {
+                      const { fullId, displayTier, displayEnchant } =
+                        calculateItemProps(item);
+                      const isSelected = tempBuild[activeSlot] === fullId;
+                      return (
+                        <button
+                          key={`${item.id}-${displayTier}-${displayEnchant}`}
+                          onClick={() =>
+                            !readOnly &&
+                            setTempBuild({ ...tempBuild, [activeSlot]: fullId })
+                          }
+                          className={`relative aspect-square bg-slate-950 rounded-xl border-2 transition overflow-hidden ${
+                            isSelected
+                              ? "border-yellow-500 ring-2 ring-yellow-500/20"
+                              : "border-slate-800 hover:border-slate-600"
+                          }`}
+                        >
+                          <ItemLoader
+                            src={`https://render.albiononline.com/v1/item/${fullId}?quality=4`}
+                            alt={item.name}
+                            size={80}
+                          />
+                          <div className="absolute bottom-1 right-1 text-[8px] text-slate-500 font-black bg-black/60 px-1 rounded">
+                            T{displayTier}
+                            {displayEnchant ? `.${displayEnchant}` : ""}
+                          </div>
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-yellow-500/10 flex items-center justify-center">
+                              <div className="bg-yellow-500 text-black text-[8px] font-black px-1 rounded">
+                                EQUIPPED
+                              </div>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* FOOTER BUTTONS */}
-        <div className="flex justify-end gap-2 mt-2 border-t border-slate-800 pt-2 shrink-0">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-400 hover:text-white transition"
-          >
-            Close
-          </button>
-          {!readOnly && (
+        <div className="p-4 border-t border-slate-800 bg-slate-950 flex justify-between items-center">
+          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+            {isTwoHanded && activeSlot === "offHand"
+              ? "⚠️ 2H Weapon Active"
+              : "Select items to build your loadout"}
+          </div>
+          <div className="flex gap-3">
             <button
-              onClick={handleSave}
-              className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold px-8 py-2 text-sm rounded shadow-lg transition active:scale-95"
+              onClick={onClose}
+              className="px-6 py-2 rounded-xl font-bold text-slate-500 hover:bg-slate-800 transition uppercase text-xs"
             >
-              SAVE
+              Cancel
             </button>
-          )}
+            {!readOnly && (
+              <button
+                onClick={handleSave}
+                className="px-8 py-2 rounded-xl font-black bg-yellow-600 hover:bg-yellow-500 text-black shadow-lg shadow-yellow-600/20 transition uppercase text-xs italic tracking-widest"
+              >
+                Save Build
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

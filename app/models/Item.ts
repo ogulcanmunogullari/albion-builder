@@ -1,25 +1,33 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
-// Interface ile Mongoose Document birleşimi
+// Interface güncellemesi
 export interface IItemDoc extends Document {
   id: string;
   name: string;
   category: string;
+  subCategory?: string;
   tier: number;
-  enchantment: number;
   validTiers: number[];
+  maxEnchantment: number;
+  minEnchantment: number;
 }
 
-const ItemSchema = new Schema<IItemDoc>({
-  id: { type: String, required: true, unique: true },
+// Şema güncellemesi
+const ItemSchema = new Schema({
+  id: { type: String, required: true },
   name: { type: String, required: true },
   category: { type: String, required: true },
+  subCategory: { type: String },
   tier: { type: Number, default: 8 },
-  enchantment: { type: Number, default: 0 },
   validTiers: { type: [Number], default: [] },
+
+  // Sadece Min ve Max Enchantment kaldı
+  maxEnchantment: { type: Number, default: 0 },
+  minEnchantment: { type: Number, default: 0 },
 });
 
-// "models.Item" kontrolü Next.js hot-reload için şarttır
+// Singleton Model
 const Item: Model<IItemDoc> =
   mongoose.models.Item || mongoose.model<IItemDoc>("Item", ItemSchema);
+
 export default Item;

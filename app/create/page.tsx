@@ -1,24 +1,18 @@
 import mongoose from "mongoose";
-import { notFound } from "next/navigation";
-import Comp from "@/models/Comp";
 import Item, { IItemDoc } from "@/models/Item";
 import HomeClient from "@/HomeClient";
-import { ICategorizedItems, IItem } from "@/types";
+import { IItem, ICategorizedItems } from "@/types";
 
-// Veritabanı bağlantısı
+// DB Bağlantısı - Burayı eklemeyi unutma!
 const connectDB = async () => {
   if (mongoose.connections[0].readyState) return;
-  if (!process.env.MONGODB_URI) throw new Error("MongoDB URI eksik.");
+  if (!process.env.MONGODB_URI) throw new Error("Mongo URI missing");
   await mongoose.connect(process.env.MONGODB_URI);
 };
 
-async function getData(id: string) {
+async function getItems() {
   try {
     await connectDB();
-
-    const compData = await Comp.findById(id).lean();
-    if (!compData) return null;
-
     const rawItems = await Item.find({}).lean<IItemDoc[]>();
 
     const formatItem = (i: IItemDoc): IItem => ({
@@ -33,7 +27,7 @@ async function getData(id: string) {
       minEnchantment: i.minEnchantment || 0,
     });
 
-    const itemsFormatted: ICategorizedItems = {
+    return {
       mainHand: rawItems
         .filter((i) => i.category === "mainHand")
         .map(formatItem),
@@ -45,29 +39,22 @@ async function getData(id: string) {
       mount: rawItems.filter((i) => i.category === "mount").map(formatItem),
       food: rawItems.filter((i) => i.category === "food").map(formatItem),
       potion: rawItems.filter((i) => i.category === "potion").map(formatItem),
-    };
-
-    return {
-      comp: JSON.parse(JSON.stringify(compData)),
-      items: itemsFormatted,
-    };
+    } as ICategorizedItems;
   } catch (error) {
     console.error("Fetch Error:", error);
-    return null;
+    return {} as ICategorizedItems;
   }
 }
 
-export default async function SharedCompPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const { id } = await params; // Next.js 15+ için await ekledik
-  const data = await getData(id);
+export default async function CreatePage() {
+  // Verileri sunucu tarafında çekiyoruz
+  const itemsFormatted = await getItems();
 
-  if (!data) {
-    notFound();
-  }
-
-  return <HomeClient items={data.items} initialData={data.comp} />;
+  // HomeClient'a sadece gerekli verileri gönderiyoruz.
+  // initialData gönderilmediği için sistem otomatik olarak "Yeni Kayıt" modunda açılacaktır.
+  return (
+    <main className="min-h-screen bg-slate-950">
+      <HomeClient items={itemsFormatted} />
+    </main>
+  );
 }

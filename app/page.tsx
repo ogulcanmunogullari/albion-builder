@@ -1,61 +1,35 @@
-import HomeClient from "@/HomeClient";
-import mongoose from "mongoose";
-import Item, { IItemDoc } from "@/models/Item";
-import { ICategorizedItems, IItem } from "@/types";
+import Link from "next/link";
+import { PlusCircle, Search, Shield, Share2, Zap } from "lucide-react";
 
-const connectDB = async () => {
-  if (mongoose.connections[0].readyState) return;
-  if (!process.env.MONGODB_URI) throw new Error("Mongo URI yok");
-  await mongoose.connect(process.env.MONGODB_URI);
-};
+export default function LandingPage() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-center px-4 space-y-12">
+      <div className="space-y-6 max-w-3xl">
+        <h1 className="text-5xl lg:text-7xl font-black text-white leading-tight">
+          Master Your{" "}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 to-amber-700">
+            Albion Compositions
+          </span>
+        </h1>
+        <p className="text-slate-400 text-lg lg:text-xl font-medium">
+          Create, manage, and share professional team builds for Albion Online.
+        </p>
+      </div>
 
-export default async function Page() {
-  let itemsFormatted: ICategorizedItems = {
-    mainHand: [],
-    offHand: [],
-    head: [],
-    armor: [],
-    shoes: [],
-    cape: [],
-    mount: [],
-    food: [],
-    potion: [],
-  };
-
-  try {
-    await connectDB();
-    const rawItems = await Item.find({}).lean<IItemDoc[]>();
-
-    if (rawItems && rawItems.length > 0) {
-      const formatItem = (i: IItemDoc): IItem => ({
-        id: i.id,
-        name: i.name,
-        category: i.category,
-        tier: i.tier,
-        enchantment: i.enchantment,
-        validTiers: i.validTiers,
-        _id: i._id.toString(),
-      });
-
-      itemsFormatted = {
-        mainHand: rawItems
-          .filter((i) => i.category === "mainHand")
-          .map(formatItem),
-        offHand: rawItems
-          .filter((i) => i.category === "offHand")
-          .map(formatItem),
-        head: rawItems.filter((i) => i.category === "head").map(formatItem),
-        armor: rawItems.filter((i) => i.category === "armor").map(formatItem),
-        shoes: rawItems.filter((i) => i.category === "shoes").map(formatItem),
-        cape: rawItems.filter((i) => i.category === "cape").map(formatItem),
-        mount: rawItems.filter((i) => i.category === "mount").map(formatItem),
-        food: rawItems.filter((i) => i.category === "food").map(formatItem),
-        potion: rawItems.filter((i) => i.category === "potion").map(formatItem),
-      };
-    }
-  } catch (error) {
-    console.error("Veri çekme hatası:", error);
-  }
-
-  return <HomeClient items={itemsFormatted} />;
+      <div className="flex flex-col sm:row gap-4 w-full max-w-md">
+        <Link
+          href="/create"
+          className="flex-1 flex items-center justify-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-black font-black py-4 px-8 rounded-2xl transition-all text-lg"
+        >
+          <PlusCircle size={24} /> Create New Comp
+        </Link>
+        <Link
+          href="/search"
+          className="flex-1 flex items-center justify-center gap-2 bg-slate-900 border border-slate-800 text-white font-black py-4 px-8 rounded-2xl transition-all text-lg"
+        >
+          <Search size={24} /> Browse Comps
+        </Link>
+      </div>
+    </div>
+  );
 }

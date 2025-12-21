@@ -3,10 +3,12 @@ import { ISlot } from "@/types";
 
 interface ICompDoc extends Document {
   title: string;
-  description: string;
-  rallyPoint?: string; // YENİ
-  swap?: string; // YENİ
-  password?: string;
+  description?: string;
+  rallyPoint?: string;
+  swap?: string;
+  password?: string; // Admin/Edit Şifresi
+  viewerPassword?: string; // İZLEYİCİ ŞİFRESİ
+  isPublic: boolean; // ARAMADA GÖRÜNSÜN MÜ?
   createdAt: Date;
   slots: ISlot[];
 }
@@ -14,9 +16,11 @@ interface ICompDoc extends Document {
 const CompSchema = new Schema<ICompDoc>({
   title: { type: String, required: true },
   description: String,
-  rallyPoint: String, // YENİ
-  swap: String, // YENİ
-  password: { type: String, select: true },
+  rallyPoint: String,
+  swap: String,
+  password: { type: String }, // Admin şifresi burada saklanır
+  viewerPassword: { type: String, default: "" },
+  isPublic: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
   slots: [
     {

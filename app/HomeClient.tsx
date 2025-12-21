@@ -1,7 +1,6 @@
-// utils/HomeClient.tsx (veya dosyan neredeyse oraya yapıştır)
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Copy,
@@ -10,384 +9,278 @@ import {
   Edit,
   Save,
   Lock,
-  Unlock,
   MapPin,
   Repeat,
-  Coins,
-  Link as LinkIcon,
   Eye,
-  CheckSquare,
-  Square,
+  Globe,
+  ShieldAlert,
 } from "lucide-react";
 
-// --- YENİ IMPORTLAR (Path Alias kullanarak) ---
-import { IItem, ISlot, IBuild, ICategorizedItems, IComp } from "@/types";
-import { getDisplayName } from "@/utils/helpers"; // Helper'ları buradan çekiyoruz
-import BuildModal from "@/components/BuildModal"; // Modal'ı buradan çekiyoruz
-import Image from "next/image";
+import { ISlot, IBuild, ICategorizedItems, IComp } from "@/types";
+import { getDisplayName } from "@/utils/helpers";
+import BuildModal from "@/components/BuildModal";
+import ItemLoader from "@/components/ItemLoader";
+import ViewBuildModal from "@/components/ViewBuildModal";
 
-// --- ANA COMPONENT ---
-interface HomeClientProps {
+const SmallItemIcon = React.memo(
+  ({ id, name }: { id: string; name: string }) => {
+    if (!id) return null;
+    return (
+      <div className="w-10 h-10 bg-slate-950 rounded border border-slate-700 flex items-center justify-center shrink-0 overflow-hidden relative group">
+        <ItemLoader
+          src={`https://render.albiononline.com/v1/item/${id}?quality=4`}
+          alt={name}
+          size={40}
+        />
+        <div className="absolute bottom-full mb-1 hidden group-hover:block bg-black text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-30 font-bold border border-slate-700 shadow-xl italic uppercase">
+          {name}
+        </div>
+      </div>
+    );
+  }
+);
+SmallItemIcon.displayName = "SmallItemIcon";
+
+export default function HomeClient({
+  items,
+  initialData,
+}: {
   items: ICategorizedItems;
   initialData?: IComp;
-}
-
-export default function HomeClient({ items, initialData }: HomeClientProps) {
+}) {
   const router = useRouter();
+  const flattenItems = useMemo(() => Object.values(items).flat(), [items]);
 
+  // --- YETKİLENDİRME STATE ---
+  const [hasAccess, setHasAccess] = useState(!initialData?.viewerPassword);
+  const [isLocked, setIsLocked] = useState(!!initialData?.password);
+  const [viewerPassInput, setViewerPassInput] = useState("");
+  const [unlockPassword, setUnlockPassword] = useState("");
+
+  // --- FORM STATE ---
   const [title, setTitle] = useState(initialData?.title || "");
-  const [description, setDescription] = useState(
-    initialData?.description || ""
-  );
   const [rallyPoint, setRallyPoint] = useState(initialData?.rallyPoint || "");
   const [swap, setSwap] = useState(initialData?.swap || "");
   const [composition, setComposition] = useState<ISlot[]>(
     initialData?.slots || []
   );
+  const [isPublic, setIsPublic] = useState(initialData?.isPublic ?? true);
+  const [viewerPassword, setViewerPassword] = useState(
+    initialData?.viewerPassword || ""
+  );
+  const [newPassword, setNewPassword] = useState("");
 
-  const [isLocked, setIsLocked] = useState(!!initialData?.hasPassword);
-  const [unlockPassword, setUnlockPassword] = useState("");
-
+  // --- MODALLAR ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [removePassword, setRemovePassword] = useState(false);
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSlotIndex, setEditingSlotIndex] = useState<number | null>(null);
-  const [isReadOnlyModal, setIsReadOnlyModal] = useState(false);
-
-  const showToolbar = isLocked || (!isLocked && initialData?._id);
-
-  // Loading durumu
-  if (!items || !items.mainHand)
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-950 text-white">
-        Loading...
-      </div>
-    );
-
-  // Tüm itemleri tek listede birleştir (Display Name bulmak için)
-  const flattenItems: IItem[] = [
-    ...(items.mainHand || []),
-    ...(items.offHand || []),
-    ...(items.head || []),
-    ...(items.armor || []),
-    ...(items.shoes || []),
-    ...(items.cape || []),
-    ...(items.mount || []),
-    ...(items.food || []),
-    ...(items.potion || []),
-  ];
-
-  const handleSaveClick = () => {
-    if (!title) return alert("Title is required!");
-    if (composition.length === 0) return alert("List is empty!");
-    setShowPasswordModal(true);
-    setNewPassword("");
-    setRemovePassword(false);
-  };
-
-  const confirmSave = async () => {
-    try {
-      const isUpdate = !!initialData?._id;
-      const method = isUpdate ? "PUT" : "POST";
-
-      const authPassword = unlockPassword;
-      let nextPassword = undefined;
-
-      if (removePassword) {
-        nextPassword = "";
-      } else if (newPassword) {
-        nextPassword = newPassword;
-      } else {
-        nextPassword = undefined;
-      }
-
-      const res = await fetch("/api/comps", {
-        method: method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: initialData?._id,
-          title,
-          description,
-          rallyPoint,
-          swap,
-          password: authPassword,
-          nextPassword: nextPassword,
-          slots: composition,
-        }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        if (removePassword) {
-          setUnlockPassword("");
-          setIsLocked(false);
-        } else {
-          if (newPassword) setUnlockPassword(newPassword);
-          setIsLocked(true);
-        }
-
-        if (isUpdate) {
-          alert("✅ Changes Saved!");
-          setShowPasswordModal(false);
-          router.refresh();
-        } else {
-          // Yeni oluşturulduysa yönlendir
-          router.push(`/comp/${data.id}`);
-          alert("✅ Comp Created! Link is ready.");
-          setShowPasswordModal(false);
-        }
-      } else {
-        alert("Error: " + data.error);
-      }
-    } catch (error: unknown) {
-      console.error(error);
-      alert("Connection error!");
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this comp permanently?"))
-      return;
-    const pwd = newPassword || unlockPassword;
-    try {
-      const res = await fetch("/api/comps/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: initialData?._id, password: pwd }),
-      });
-      if (res.ok) {
-        alert("Deleted successfully.");
-        router.push("/");
-      } else {
-        const d = await res.json();
-        alert("Error: " + d.error);
-      }
-    } catch (error: unknown) {
-      console.error(error);
-      alert("Connection error");
-    }
-  };
-
-  const handleUnlock = async () => {
-    try {
-      const res = await fetch("/api/comps/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: initialData?._id,
-          password: unlockPassword,
-        }),
-      });
-      const result = await res.json();
-      if (result.success) {
-        setIsLocked(false);
-        setShowUnlockModal(false);
-        alert("Unlocked! You can now edit.");
-      } else {
-        alert("Incorrect Password!");
-      }
-    } catch (error: unknown) {
-      console.error(error);
-      alert("Verification error");
-    }
-  };
-
-  const handleEditClick = (index: number) => {
-    setEditingSlotIndex(index);
-    setIsReadOnlyModal(false);
-    setIsModalOpen(true);
-  };
+  const [selectedSlot, setSelectedSlot] = useState<ISlot | null>(null);
 
   const ROLES = [
     "Caller",
     "Tank",
-    "Defensive Tank",
-    "Aggressive Tank",
-    "Support",
-    "Defensive Support",
-    "Aggressive Support",
     "Healer",
-    "Main Healer",
-    "Frontline Healer",
-    "Backline Healer",
-    "Melee DPS",
-    "Ranged DPS",
+    "Axe",
+    "Sword",
+    "Support",
+    "Fire Staff",
+    "Frost Staff",
+    "Bow",
+    "Crossbow",
+    "Looter",
+    "Cursed Staff",
     "Bomb Squad",
     "Battle Mount",
   ];
 
-  const addSlot = () => {
-    setComposition([
-      ...composition,
-      {
-        id: Date.now(),
-        role: "Tank",
-        weaponId: "",
-        build: {
-          mainHand: "",
-          offHand: "",
-          head: "",
-          armor: "",
-          shoes: "",
-          cape: "",
-          mount: "",
-          food: "",
-          potion: "",
-        },
-      },
-    ]);
-  };
-
-  const updateSlotBuild = (finalBuildData: IBuild) => {
+  // --- SLOT GÜNCELLEME ---
+  const updateSlotBuild = (build: IBuild) => {
     if (editingSlotIndex !== null) {
-      const newComp = [...composition];
-      newComp[editingSlotIndex].build = finalBuildData;
-      // weaponId'yi de güncelle ki listede görünsün
-      newComp[editingSlotIndex].weaponId = finalBuildData.mainHand;
-      setComposition(newComp);
+      const isNew = editingSlotIndex >= composition.length;
+      const updatedSlot: ISlot = {
+        id: isNew ? Date.now() : composition[editingSlotIndex].id,
+        role: isNew ? "Tank" : composition[editingSlotIndex].role,
+        weaponId: build.mainHand,
+        build: build,
+      };
+      if (isNew) setComposition([...composition, updatedSlot]);
+      else {
+        const newComp = [...composition];
+        newComp[editingSlotIndex] = updatedSlot;
+        setComposition(newComp);
+      }
       setIsModalOpen(false);
       setEditingSlotIndex(null);
     }
   };
 
-  const generateDiscordText = () => {
-    let text = `**${title.toUpperCase()}**\n`;
-    if (description) text += `*${description}*\n`;
-    if (rallyPoint) text += `📍 **Rally:** ${rallyPoint}\n`;
-    if (swap) text += `🔄 **Swap:** ${swap}\n\n`;
-    composition.forEach((slot, index) => {
-      const weaponName = getDisplayName(slot.weaponId, flattenItems);
-      text += `${index + 1}) **${slot.role}** - ${
-        weaponName || "Any"
-      } - @Player Discord Nickname\n`;
-    });
-    return text;
+  // --- KAYIT FONKSİYONU ---
+  const confirmSave = async () => {
+    try {
+      const isNewRecord = !initialData?._id;
+      const res = await fetch("/api/comps", {
+        method: isNewRecord ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: initialData?._id,
+          title,
+          rallyPoint,
+          swap,
+          isPublic,
+          viewerPassword: isPublic ? "" : viewerPassword,
+          password: unlockPassword || initialData?.password,
+          nextPassword: newPassword || initialData?.password,
+          slots: composition,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert("✅ Build successfully saved!");
+        if (isNewRecord && data.id) {
+          router.push(`/comp/${data.id}`);
+        } else {
+          window.location.reload();
+        }
+      } else {
+        alert("Hata: " + (data.error || "Registration failed."));
+      }
+    } catch {
+      alert("Connection Error! Could not connect to server.");
+    }
   };
 
-  // Küçük ikon bileşeni
-  const SmallItemIcon = ({ id }: { id: string }) => {
-    if (!id) return null;
-    return (
-      <div className="w-10 h-10 bg-slate-950 rounded border border-slate-700 flex items-center justify-center shrink-0 overflow-hidden relative group">
-        {/* ESKİ IMG ETİKETİ YERİNE BU GELECEK: */}
-        <Image
-          src={`https://render.albiononline.com/v1/item/${id}?quality=4`}
-          alt="item"
-          width={40} // w-10 = 40px olduğu için
-          height={40} // h-10 = 40px olduğu için
-          className="object-contain"
-          unoptimized // ÖNEMLİ: Vercel kotasını yememesi için
-        />
+  // --- SİLME FONKSİYONU ---
+  const handleDeleteComp = async () => {
+    if (!initialData?._id) return;
+    if (!confirm("⚠️ This build will be completely deleted. Are you sure?"))
+      return;
+    try {
+      const res = await fetch(`/api/comps/delete?id=${initialData._id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("🗑️ Build Deleted.");
+        router.push("/search");
+      }
+    } catch {
+      alert("Connection Error!");
+    }
+  };
 
-        {/* Tooltip kısmı aynı kalıyor */}
-        <div className="absolute bottom-full mb-1 hidden group-hover:block bg-black text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-10 border border-slate-600">
-          {getDisplayName(id, flattenItems)}
+  // --- DISCORD KOPYALAMA ---
+  const handleCopyTemplate = () => {
+    const roleConfig: Record<string, { emoji: string; label: string }> = {
+      Caller: { emoji: "📢", label: "Caller" },
+      Tank: { emoji: "🛡️", label: "Tank" },
+      Support: { emoji: "🧠", label: "Support" },
+      Healer: { emoji: "🚑", label: "Healer" },
+      Sword: { emoji: "⚔️", label: "Sword" },
+      Axe: { emoji: "🪓", label: "Axe" },
+      "Fire Staff": { emoji: "🔥", label: "Fire Staff" },
+      "Frost Staff": { emoji: "🧊", label: "Frost Staff" },
+      Bow: { emoji: "🏹", label: "Bow" },
+      Crossbow: { emoji: "🏹", label: "Crossbow" },
+      Looter: { emoji: "🗡️", label: "Looter" },
+      "Cursed Staff": { emoji: "⚜️", label: "Cursed Staff" },
+      "Bomb Squad": { emoji: "💣", label: "Bomb Squad" },
+      "Battle Mount": { emoji: "🦣", label: "Battle Mount" },
+    };
+
+    const roleSummary = composition.reduce(
+      (acc: Record<string, number>, slot) => {
+        acc[slot.role] = (acc[slot.role] || 0) + 1;
+        return acc;
+      },
+      {}
+    );
+
+    let text = `# ⚔️ ${title.toUpperCase()} ⚔️\n\`\`\`\n`;
+    if (rallyPoint) text += `📍 RALLY: ${rallyPoint}\n`;
+    if (swap) text += `🔄 SWAP : ${swap}\n`;
+    text += "```\n**📊 ROLE SUMMARY:**\n";
+    text +=
+      Object.entries(roleSummary)
+        .map(([role, count]) => {
+          const config = roleConfig[role] || { emoji: "👤", label: role };
+          return `${config.emoji} ${config.label}: **${count}**`;
+        })
+        .join("  |  ") + "\n\n**👥 Player List:**\n";
+
+    composition.forEach((slot, index) => {
+      const weaponName = getDisplayName(slot.weaponId, flattenItems);
+      const config = roleConfig[slot.role] || { emoji: "👤", label: slot.role };
+      const num = (index + 1).toString().padStart(2, "0");
+      text += `\`${num}\` ${config.emoji} **${slot.role}** - ${
+        weaponName || "Any Weapon"
+      } - _@Player_\n`;
+    });
+
+    navigator.clipboard
+      .writeText(text)
+      .then(() => alert("📋 Copy to clipboard!"));
+  };
+
+  const handleUnlock = () => {
+    if (unlockPassword === initialData?.password) {
+      setIsLocked(false);
+      setShowUnlockModal(false);
+    } else alert("❌ Wrong Admin Password!");
+  };
+
+  // --- VIEWER GATE ---
+  if (!hasAccess && initialData?.viewerPassword) {
+    return (
+      <div className="fixed inset-0 bg-slate-950 flex items-center justify-center z-500 p-4 backdrop-blur-md">
+        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 p-8 rounded-[40px] text-center space-y-6 shadow-2xl">
+          <Lock size={40} className="mx-auto text-red-500" />
+          <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">
+            Protected To View
+          </h2>
+          <input
+            type="password"
+            value={viewerPassInput}
+            onChange={(e) => setViewerPassInput(e.target.value)}
+            onKeyDown={(e) =>
+              e.key === "Enter" &&
+              (viewerPassInput === initialData?.viewerPassword
+                ? setHasAccess(true)
+                : alert("Hatalı!"))
+            }
+            className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white font-bold outline-none focus:border-red-500"
+            placeholder="Viewer Password..."
+          />
+          <button
+            onClick={() =>
+              viewerPassInput === initialData?.viewerPassword
+                ? setHasAccess(true)
+                : alert("Hatalı!")
+            }
+            className="w-full py-4 bg-red-600 text-white font-black rounded-2xl uppercase tracking-widest"
+          >
+            View Build
+          </button>
         </div>
       </div>
     );
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 font-sans flex flex-col">
-      <div className="max-w-6xl mx-auto space-y-6 grow w-full">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 lg:p-8 pb-20 font-sans">
+      <div className="max-w-6xl mx-auto space-y-6">
         {/* HEADER */}
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-lg flex flex-col items-center justify-center text-center gap-2">
-          <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-yellow-500 to-amber-700">
-            Albion Composition Maker by KOMANDO35
-          </h1>
-          <p className="flex items-center justify-center gap-2 text-slate-500 text-sm">
-            <Coins size={14} className="text-yellow-600" />
-            For donation, use in-game mail or dm on{" "}
-            <span className="text-yellow-600 font-bold">
-              Europe Server
-            </span> to{" "}
-            <span className="text-slate-300 font-bold">KOMANDO35</span>
-          </p>
-        </div>
-
-        {/* --- TOOLBAR İÇERİĞİ --- */}
-        {showToolbar && (
-          <div className="flex gap-2 items-center bg-slate-900/50 p-2 rounded border border-slate-800 flex-wrap">
-            {/* 1. KİLİT AÇMA BUTONU (Aynı kalıyor) */}
-            {isLocked && (
-              <button
-                onClick={() => setShowUnlockModal(true)}
-                className="bg-yellow-600 hover:bg-yellow-500 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-black"
-              >
-                <Unlock size={18} /> Edit (Unlock)
-              </button>
-            )}
-
-            {/* 2. SİLME BUTONU (Aynı kalıyor) */}
-            {!isLocked && initialData?._id && (
-              <button
-                onClick={handleDelete}
-                className="bg-red-700 hover:bg-red-600 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-white"
-              >
-                <Trash2 size={18} /> Delete
-              </button>
-            )}
-
-            {/* 3. DISCORD KOPYALAMA (DÜZELTİLDİ: shareLink yerine ID kontrolü) */}
-            {initialData?._id && (
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(generateDiscordText());
-                  alert("Discord text copied!");
-                }}
-                className="bg-indigo-600 hover:bg-indigo-500 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-white"
-              >
-                <Copy size={18} /> Copy Discord Text
-              </button>
-            )}
-
-            {/* 4. LINK KOPYALAMA (DÜZELTİLDİ: Linki tıklandığı an üretiyoruz) */}
-            {initialData?._id && (
-              <button
-                onClick={() => {
-                  // Linki anlık oluşturuyoruz, state kullanmıyoruz
-                  const link = `${window.location.origin}/comp/${initialData._id}`;
-                  navigator.clipboard.writeText(link);
-                  alert("Link Copied!");
-                }}
-                className="bg-green-700 hover:bg-green-600 px-6 py-2 rounded font-bold flex items-center gap-2 transition text-white ml-auto"
-              >
-                <LinkIcon size={18} /> Comp Link
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* DETAILS INPUTS */}
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 space-y-4">
+        <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-2xl relative overflow-hidden">
           <input
             value={title}
             onChange={(e) => !isLocked && setTitle(e.target.value)}
-            readOnly={isLocked}
-            className={`w-full bg-transparent text-3xl font-bold border-b focus:border-yellow-500 outline-none placeholder-slate-700 ${
-              isLocked
-                ? "border-transparent text-slate-400"
-                : "border-slate-700"
-            }`}
-            placeholder="Enter Title Here.."
+            disabled={isLocked}
+            className="w-full bg-transparent text-3xl font-black border-b border-slate-800 focus:border-yellow-500 outline-none p-2 italic uppercase tracking-tighter"
+            placeholder="Build Title..."
           />
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <textarea
-              value={description}
-              onChange={(e) => !isLocked && setDescription(e.target.value)}
-              readOnly={isLocked}
-              className={`w-full bg-slate-950 p-3 rounded border h-24 outline-none focus:border-yellow-500 col-span-1 md:col-span-2 ${
-                isLocked
-                  ? "border-slate-800 text-slate-500"
-                  : "border-slate-800"
-              }`}
-              placeholder="General Description..."
-            />
-
             <div className="relative">
               <MapPin
                 className="absolute left-3 top-3 text-slate-500"
@@ -396,16 +289,11 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
               <input
                 value={rallyPoint}
                 onChange={(e) => !isLocked && setRallyPoint(e.target.value)}
-                readOnly={isLocked}
-                className={`w-full bg-slate-950 p-2 pl-10 rounded border outline-none focus:border-yellow-500 ${
-                  isLocked
-                    ? "border-slate-800 text-slate-500"
-                    : "border-slate-800"
-                }`}
-                placeholder="Rally Point (e.g. Martlock Portal)"
+                disabled={isLocked}
+                className="w-full bg-slate-950 p-3 pl-10 rounded-xl border border-slate-800 outline-none italic"
+                placeholder="Rally Point"
               />
             </div>
-
             <div className="relative">
               <Repeat
                 className="absolute left-3 top-3 text-slate-500"
@@ -414,59 +302,75 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
               <input
                 value={swap}
                 onChange={(e) => !isLocked && setSwap(e.target.value)}
-                readOnly={isLocked}
-                className={`w-full bg-slate-950 p-2 pl-10 rounded border outline-none focus:border-yellow-500 ${
-                  isLocked
-                    ? "border-slate-800 text-slate-500"
-                    : "border-slate-800"
-                }`}
-                placeholder="Swap Instructions (e.g. 5 Calming, 3 Giga...)"
+                disabled={isLocked}
+                className="w-full bg-slate-950 p-3 pl-10 rounded-xl border border-slate-800 outline-none italic"
+                placeholder="Swap Info"
               />
             </div>
           </div>
         </div>
 
-        {/* PLAYER LIST */}
-        <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
-          <div className="p-4 bg-slate-800/50 flex justify-between items-center">
-            <h3 className="font-bold text-slate-300">Player List</h3>
-            {!isLocked && (
-              <div className="flex gap-2">
+        {/* TEAM COMPOSITION */}
+        <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
+          <div className="p-4 bg-slate-800/30 flex flex-wrap justify-between items-center gap-3 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <h3 className="font-black text-slate-400 uppercase text-xs italic">
+                Team Composition
+              </h3>
+              <button
+                onClick={handleCopyTemplate}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] transition-all uppercase italic shadow-lg shadow-indigo-600/20"
+              >
+                <Copy size={12} /> Copy Discord Template
+              </button>
+            </div>
+            <div className="flex gap-2">
+              {isLocked ? (
                 <button
-                  onClick={handleSaveClick}
-                  className="text-blue-400 text-sm flex gap-1 items-center hover:text-blue-300 transition font-bold"
+                  onClick={() => setShowUnlockModal(true)}
+                  className="bg-red-600/10 text-red-500 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white"
                 >
-                  <Save size={14} /> Save
+                  <Lock size={14} /> Unlock to Edit
                 </button>
-                <button
-                  onClick={() => setComposition([])}
-                  className="text-red-400 text-sm flex gap-1 items-center hover:text-red-300 transition"
-                >
-                  <Trash2 size={14} /> Clear
-                </button>
-              </div>
-            )}
+              ) : (
+                <div className="flex gap-2">
+                  {initialData?._id && (
+                    <button
+                      onClick={handleDeleteComp}
+                      className="bg-red-600/10 text-red-500 font-black py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white"
+                    >
+                      <Trash2 size={14} /> Delete
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowPasswordModal(true)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-black py-2 px-4 rounded-xl flex items-center gap-2 transition text-xs uppercase shadow-lg shadow-blue-600/20"
+                  >
+                    <Save size={14} /> Save Settings
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="divide-y divide-slate-800">
+
+          <div className="divide-y divide-slate-800/50">
             {composition.map((slot, index) => (
               <div
                 key={slot.id}
-                className="flex flex-col lg:flex-row items-center gap-4 p-4 hover:bg-slate-800/40 transition group"
+                className="flex flex-col lg:flex-row items-center gap-4 p-4 hover:bg-slate-800/20 transition group"
               >
-                <span className="font-mono text-slate-500 font-bold w-6 text-center">
-                  {index + 1}
+                <span className="font-mono text-slate-600 font-bold w-6">
+                  {(index + 1).toString().padStart(2, "0")}
                 </span>
                 <select
                   value={slot.role}
                   disabled={isLocked}
                   onChange={(e) => {
-                    const n = [...composition];
-                    n[index].role = e.target.value;
-                    setComposition(n);
+                    const newComp = [...composition];
+                    newComp[index].role = e.target.value;
+                    setComposition(newComp);
                   }}
-                  className={`bg-slate-950 border border-slate-700 rounded p-2 text-sm font-bold text-blue-400 w-32 focus:border-blue-500 outline-none ${
-                    isLocked ? "opacity-70 cursor-not-allowed" : ""
-                  }`}
+                  className="bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm font-bold text-blue-400 w-36 outline-none uppercase italic"
                 >
                   {ROLES.map((r) => (
                     <option key={r} value={r}>
@@ -474,52 +378,55 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
                     </option>
                   ))}
                 </select>
-                <div className="flex gap-1 items-center justify-center lg:justify-start min-w-62.5 flex-wrap">
-                  <SmallItemIcon id={slot.weaponId} />
-                  <SmallItemIcon id={slot.build.offHand} />
-                  <SmallItemIcon id={slot.build.head} />
-                  <SmallItemIcon id={slot.build.armor} />
-                  <SmallItemIcon id={slot.build.shoes} />
-                  <SmallItemIcon id={slot.build.cape} />
-                  {(slot.build.mount ||
-                    slot.build.food ||
-                    slot.build.potion) && (
-                    <div className="w-px h-8 bg-slate-700 mx-1"></div>
-                  )}
-                  <SmallItemIcon id={slot.build.mount} />
-                  <SmallItemIcon id={slot.build.food} />
-                  <SmallItemIcon id={slot.build.potion} />
+                <div className="flex gap-1 flex-wrap justify-center lg:justify-start">
+                  {Object.entries(slot.build).map(([key, itemId]) => (
+                    <SmallItemIcon
+                      key={key}
+                      id={itemId as string}
+                      name={getDisplayName(itemId as string, flattenItems)}
+                    />
+                  ))}
                 </div>
-                <div className="flex-1 w-full text-center lg:text-left">
-                  <div className="font-bold text-slate-200 text-lg">
-                    {getDisplayName(slot.weaponId, flattenItems)}
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {slot.build.armor
-                      ? getDisplayName(slot.build.armor, items.armor || [])
-                      : ""}
-                  </div>
+                <div className="flex-1 font-bold text-slate-200 text-center lg:text-left truncate uppercase italic tracking-tighter">
+                  {getDisplayName(slot.weaponId, flattenItems) || "Any Weapon"}
                 </div>
-                <div className="flex gap-2 w-full lg:w-auto justify-end">
+                <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      setEditingSlotIndex(index);
-                      setIsReadOnlyModal(true);
-                      setIsModalOpen(true);
+                      setSelectedSlot(slot);
+                      setIsViewModalOpen(true);
                     }}
-                    className="bg-slate-800 text-slate-400 p-2 rounded hover:bg-slate-700 hover:text-white transition"
-                    title="View"
+                    className="p-2 text-slate-500 hover:text-white transition"
                   >
-                    <Eye size={18} />
+                    <Eye size={20} />
                   </button>
-
                   {!isLocked && (
                     <>
                       <button
-                        onClick={() => handleEditClick(index)}
-                        className="bg-yellow-600/10 text-yellow-500 px-4 py-2 rounded border border-yellow-600/30 hover:bg-yellow-600 hover:text-white transition flex gap-2 items-center text-sm font-medium"
+                        onClick={() => {
+                          const source = composition[index];
+                          const newSlot = {
+                            ...source,
+                            id: Date.now(),
+                            build: { ...source.build },
+                          };
+                          const newComp = [...composition];
+                          newComp.splice(index + 1, 0, newSlot);
+                          setComposition(newComp);
+                        }}
+                        className="p-2 text-slate-500 hover:text-blue-400 transition"
+                        title="Duplicate"
                       >
-                        <Edit size={16} /> Edit
+                        <Copy size={18} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingSlotIndex(index);
+                          setIsModalOpen(true);
+                        }}
+                        className="bg-yellow-600/10 text-yellow-500 px-4 py-1.5 rounded-lg border border-yellow-600/20 font-bold hover:bg-yellow-600 hover:text-black transition flex items-center gap-1 text-xs"
+                      >
+                        <Edit size={14} /> Edit
                       </button>
                       <button
                         onClick={() =>
@@ -527,9 +434,9 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
                             composition.filter((_, i) => i !== index)
                           )
                         }
-                        className="text-slate-600 hover:text-red-500 p-2 transition"
+                        className="p-2 text-slate-600 hover:text-red-500 transition"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={20} />
                       </button>
                     </>
                   )}
@@ -539,141 +446,149 @@ export default function HomeClient({ items, initialData }: HomeClientProps) {
           </div>
           {!isLocked && (
             <button
-              onClick={addSlot}
-              className="w-full py-4 bg-slate-800/30 hover:bg-slate-800 flex justify-center items-center gap-2 text-slate-400 hover:text-white transition border-t border-slate-800 font-medium"
+              onClick={() => {
+                setEditingSlotIndex(composition.length);
+                setIsModalOpen(true);
+              }}
+              className="w-full py-6 bg-slate-800/10 hover:bg-yellow-500/5 text-slate-500 hover:text-yellow-500 transition-all border-t border-slate-800 font-bold flex justify-center items-center gap-2 uppercase tracking-[0.2em] text-sm italic"
             >
               <Plus size={20} /> Add New Player
             </button>
           )}
         </div>
-
-        {/* --- MODALS --- */}
-
-        {/* IMPORT EDİLEN YENİ BUILD MODAL KULLANILIYOR */}
-        <BuildModal
-          isOpen={isModalOpen}
-          onClose={() => {
-            setIsModalOpen(false);
-            setEditingSlotIndex(null);
-          }}
-          slot={
-            editingSlotIndex !== null ? composition[editingSlotIndex] : null
-          }
-          onSave={updateSlotBuild}
-          allItems={items}
-          readOnly={isReadOnlyModal}
-        />
-
-        {showUnlockModal && (
-          <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-60 backdrop-blur-sm">
-            <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 w-full max-w-sm text-center">
-              <div className="mx-auto bg-slate-800 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-red-500">
-                <Lock size={32} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Comp Locked</h3>
-              <p className="text-slate-400 mb-4 text-sm">
-                Enter caller password to edit.
-              </p>
-
-              <input
-                type="password"
-                placeholder="Password..."
-                className="w-full bg-slate-950 border border-slate-700 p-3 rounded text-white text-center text-lg mb-4 outline-none focus:border-yellow-500"
-                value={unlockPassword}
-                onChange={(e) => setUnlockPassword(e.target.value)}
-              />
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowUnlockModal(false)}
-                  className="flex-1 py-3 text-slate-400 hover:bg-slate-800 rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUnlock}
-                  className="flex-1 py-3 bg-yellow-600 hover:bg-yellow-500 text-black font-bold rounded"
-                >
-                  UNLOCK
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showPasswordModal && (
-          <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-60 backdrop-blur-sm">
-            <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 w-full max-w-sm text-center">
-              <div className="mx-auto bg-slate-800 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-blue-500">
-                <Save size={32} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">
-                Save Composition
-              </h3>
-              <p className="text-slate-400 mb-4 text-sm">
-                Set a password to protect edits (Optional)
-              </p>
-
-              <input
-                type="password"
-                placeholder="New Password (Optional)"
-                className={`w-full bg-slate-950 border border-slate-700 p-3 rounded text-white text-center text-lg mb-4 outline-none focus:border-blue-500 ${
-                  removePassword ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-                value={newPassword}
-                disabled={removePassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-
-              <div
-                className="flex items-center justify-center gap-2 mb-4 cursor-pointer"
-                onClick={() =>
-                  !newPassword && setRemovePassword(!removePassword)
-                }
-              >
-                {removePassword ? (
-                  <CheckSquare className="text-red-500" />
-                ) : (
-                  <Square className="text-slate-600" />
-                )}
-                <span
-                  className={`text-sm ${
-                    removePassword ? "text-red-400 font-bold" : "text-slate-400"
-                  } ${newPassword ? "opacity-50" : ""}`}
-                >
-                  Remove password (Make Public)
-                </span>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowPasswordModal(false)}
-                  className="flex-1 py-3 text-slate-400 hover:bg-slate-800 rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmSave}
-                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded"
-                >
-                  CONFIRM SAVE
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* --- FOOTER --- */}
-      <footer className="mt-12 text-center text-slate-600 text-sm pb-8">
-        <p className="flex items-center justify-center gap-2">
-          <Coins size={16} className="text-yellow-600" />
-          For donation, use in-game mail or dm on{" "}
-          <span className="text-yellow-600 font-bold">
-            Europe Server
-          </span> to <span className="text-slate-300 font-bold">KOMANDO35</span>
-        </p>
-      </footer>
+      {/* ADMIN UNLOCK MODAL */}
+      {showUnlockModal && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-700 backdrop-blur-md p-4">
+          <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-700 w-full max-w-sm text-center space-y-6 shadow-2xl">
+            <ShieldAlert size={48} className="mx-auto text-yellow-500" />
+            <h3 className="text-xl font-black text-white uppercase italic tracking-widest">
+              Admin Unlock
+            </h3>
+            <input
+              type="password"
+              value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
+              className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white font-bold outline-none focus:border-yellow-500"
+              placeholder="Admin Password..."
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowUnlockModal(false)}
+                className="flex-1 py-3 text-slate-500 font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUnlock}
+                className="flex-1 py-4 bg-yellow-600 text-black font-black rounded-2xl uppercase text-xs"
+              >
+                Unlock
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SAVE SETTINGS MODAL */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-600 backdrop-blur-md p-4">
+          <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-700 w-full max-w-md space-y-6 shadow-2xl">
+            <h3 className="text-xl font-black text-white text-center uppercase tracking-[0.3em] italic">
+              Settings
+            </h3>
+            <div className="space-y-5">
+              <div className="flex gap-2 p-1.5 bg-slate-950 rounded-3xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsPublic(true)}
+                  className={`flex-1 py-4 rounded-[18px] font-bold transition-all flex items-center justify-center gap-2 ${
+                    isPublic
+                      ? "bg-yellow-600 text-black shadow-lg"
+                      : "text-slate-500"
+                  }`}
+                >
+                  <Globe size={18} /> Public
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPublic(false)}
+                  className={`flex-1 py-4 rounded-[18px] font-bold transition-all flex items-center justify-center gap-2 ${
+                    !isPublic
+                      ? "bg-red-600 text-white shadow-lg"
+                      : "text-slate-500"
+                  }`}
+                >
+                  <Lock size={18} /> Private
+                </button>
+              </div>
+              {!isPublic && (
+                <div className="space-y-1 animate-in fade-in zoom-in-95 duration-200">
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-3 tracking-widest italic">
+                    Viewer Password
+                  </label>
+                  <input
+                    type="password"
+                    value={viewerPassword}
+                    onChange={(e) => setViewerPassword(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 p-4 rounded-[20px] text-white outline-none focus:border-red-500 italic"
+                    placeholder="Set viewer pass..."
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-3 tracking-widest italic">
+                  Admin Password (Edit)
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 p-4 rounded-[20px] text-white outline-none focus:border-yellow-500 italic"
+                  placeholder="Set admin pass..."
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-4">
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="flex-1 py-4 text-slate-500 font-bold uppercase text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSave}
+                className="flex-1 py-4 bg-blue-600 text-white font-black rounded-[22px] uppercase text-xs shadow-lg shadow-blue-600/20"
+              >
+                Save All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <BuildModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingSlotIndex(null);
+        }}
+        slot={
+          editingSlotIndex !== null && editingSlotIndex < composition.length
+            ? composition[editingSlotIndex]
+            : null
+        }
+        onSave={updateSlotBuild}
+        allItems={items}
+      />
+      <ViewBuildModal
+        isOpen={isViewModalOpen}
+        onClose={() => setIsViewModalOpen(false)}
+        slot={selectedSlot}
+        allItems={items}
+      />
     </div>
   );
 }
