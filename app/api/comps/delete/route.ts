@@ -1,3 +1,4 @@
+// app/api/comps/delete/route.ts
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import Comp from "@/models/Comp";
@@ -20,7 +21,6 @@ export async function POST(request: Request) {
     if (!comp)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // Şifre kontrolü (Eğer comp şifreliyse ve gönderilen şifre uyuşmuyorsa)
     if (comp.password && comp.password !== password) {
       return NextResponse.json({ error: "Wrong password" }, { status: 403 });
     }
@@ -28,7 +28,9 @@ export async function POST(request: Request) {
     await Comp.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

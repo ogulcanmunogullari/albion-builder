@@ -1,6 +1,7 @@
+// app/api/comps/route.ts
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
-import Comp from "@/models/Comp";
+import Comp from "@/models/Comp"; // Import yolu güncellendi
 
 const connectDB = async () => {
   if (mongoose.connections[0].readyState) return;
@@ -34,9 +35,13 @@ export async function POST(request: Request) {
       { success: true, id: newComp._id },
       { status: 201 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // any yerine unknown kullanıldı
     console.error("Save Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Hata mesajını güvenli bir şekilde alıyoruz
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -52,7 +57,7 @@ export async function PUT(request: Request) {
     if (!comp)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // 1. KİMLİK DOĞRULAMA (Mevcut Şifre Kontrolü)
+    // 1. KİMLİK DOĞRULAMA
     if (comp.password && comp.password !== body.password) {
       return NextResponse.json(
         { error: "Incorrect Password!" },
@@ -60,15 +65,14 @@ export async function PUT(request: Request) {
       );
     }
 
-    // 2. İÇERİK GÜNCELLEME
+    // 2. GÜNCELLEME
     comp.title = body.title;
     comp.description = body.description || "";
     comp.rallyPoint = body.rallyPoint || "";
     comp.swap = body.swap || "";
     comp.slots = body.slots;
 
-    // 3. ŞİFRE DEĞİŞTİRME/KALDIRMA (YENİ EKLENEN KISIM)
-    // Eğer frontend "nextPassword" gönderdiyse (boş string "" olsa bile), şifreyi güncelle.
+    // 3. ŞİFRE GÜNCELLEME
     if (body.nextPassword !== undefined) {
       comp.password = body.nextPassword;
     }
@@ -76,7 +80,9 @@ export async function PUT(request: Request) {
     await comp.save();
 
     return NextResponse.json({ success: true, id: comp._id });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

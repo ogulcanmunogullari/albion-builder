@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import Comp from "@/models/Comp";
 import Item, { IItemDoc } from "@/models/Item";
 import HomeClient from "@/HomeClient";
-import { IItem, ICategorizedItems } from "@/types";
+import { IItem, ICategorizedItems, ISlot } from "@/types";
 
 const connectDB = async () => {
   if (mongoose.connections[0].readyState) return;
@@ -52,18 +52,19 @@ async function getData(compId: string) {
       _id: compData._id.toString(),
       password: "",
       hasPassword: hasPassword,
-      // DÜZELTME BURADA: null yerine undefined kullanıldı
       createdAt: compData.createdAt
         ? compData.createdAt.toISOString()
         : undefined,
-      slots: compData.slots.map((s: any) => ({
+      // --- DÜZELTME BURADA YAPILDI ---
+      // "any" hatasını çözmek için tipi belirttik:
+      slots: compData.slots.map((s: ISlot & { _id?: string }) => ({
         ...s,
         _id: s._id ? s._id.toString() : undefined,
       })),
     };
 
     return { comp: compClean, items: itemsFormatted };
-  } catch (error) {
+  } catch {
     return null;
   }
 }

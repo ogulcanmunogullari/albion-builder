@@ -1,10 +1,13 @@
+// components/BuildModal.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
 import { X, Search } from "lucide-react";
 
+// Tipleri içe aktarıyoruz (senin types/index.ts dosyanla uyumlu)
 import { ISlot, IBuild, ICategorizedItems, IItem } from "@/types";
 import { constructItemId } from "@/utils/helpers";
+import Image from "next/image";
 
 interface BuildModalProps {
   isOpen: boolean;
@@ -15,6 +18,8 @@ interface BuildModalProps {
   readOnly?: boolean;
 }
 
+// "any" yerine kullanacağımız özel tip:
+// Bu, "SelectionState'in her anahtarı (mainHand, head vb.), tier ve enchant tutan bir objedir" demek.
 type SelectionState = {
   [key in keyof IBuild]?: { tier: number; enchant: number };
 };
@@ -27,7 +32,8 @@ export default function BuildModal({
   allItems,
   readOnly = false,
 }: BuildModalProps) {
-  const [tempBuild, setTempBuild] = useState<IBuild>({
+  // Varsayılan boş build
+  const defaultBuild: IBuild = {
     mainHand: "",
     offHand: "",
     head: "",
@@ -37,31 +43,23 @@ export default function BuildModal({
     mount: "",
     food: "",
     potion: "",
-  });
+  };
 
+  const [tempBuild, setTempBuild] = useState<IBuild>(defaultBuild);
   const [selection, setSelection] = useState<SelectionState>({});
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Modal açıldığında veya slot değiştiğinde verileri işle
   useEffect(() => {
     if (isOpen && slot?.build) {
-      const newTempBuild: IBuild = {
-        mainHand: "",
-        offHand: "",
-        head: "",
-        armor: "",
-        shoes: "",
-        cape: "",
-        mount: "",
-        food: "",
-        potion: "",
-      };
+      const newTempBuild: IBuild = { ...defaultBuild };
       const newSelection: SelectionState = {};
 
+      // Slot build içindeki her bir key üzerinde dönüyoruz
       (Object.keys(slot.build) as Array<keyof IBuild>).forEach((key) => {
         const savedId = slot.build[key];
         if (!savedId) return;
 
+        // ID'den Tier ve Enchantment bilgisini ayıkla
         const tierMatch = savedId.match(/^T(\d+)_/);
         const tier = tierMatch ? parseInt(tierMatch[1]) : 8;
 
@@ -69,9 +67,14 @@ export default function BuildModal({
         const enchant = enchantParts.length > 1 ? parseInt(enchantParts[1]) : 0;
 
         const parts = savedId.split("_");
+        // Base suffix bulma (örn: MAIN_SWORD)
         const baseSuffix = parts.slice(1).join("_").split("@")[0];
 
-        const collection = (allItems as any)[key] || [];
+        // --- KRİTİK DÜZELTME (any KALDIRILDI) ---
+        // TypeScript'e 'key'in allItems içinde kesinlikle var olduğunu söylüyoruz.
+        const collection = allItems[key as keyof ICategorizedItems] || [];
+
+        // Koleksiyon içinde bu suffix'e sahip item'ı bul
         const foundBaseItem = collection.find(
           (i: IItem) =>
             i.id.includes(`_${baseSuffix}`) || i.id.endsWith(baseSuffix)
@@ -81,15 +84,22 @@ export default function BuildModal({
           newTempBuild[key] = foundBaseItem.id;
           newSelection[key] = { tier, enchant };
         } else {
+          // Eğer veritabanında bulamazsak (eski veri vs.) olduğu gibi koy
           newTempBuild[key] = savedId;
           newSelection[key] = { tier, enchant };
         }
       });
-      setTempBuild(newTempBuild);
-      setSelection(newSelection);
-      setSearchTerm("");
+
+      // --- PERFORMANS DÜZELTMESİ ---
+      // Eğer hesaplanan veri, şu anki state ile aynıysa güncelleme yapma (Loop'u engeller)
+      if (JSON.stringify(tempBuild) !== JSON.stringify(newTempBuild)) {
+        setTempBuild(newTempBuild);
+        setSelection(newSelection);
+        setSearchTerm("");
+      }
     }
-  }, [isOpen, slot, allItems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, slot, allItems]); // tempBuild dependency'den çıkarıldı
 
   if (!isOpen) return null;
 
@@ -97,7 +107,9 @@ export default function BuildModal({
 
   const handleSave = () => {
     const finalBuild: Partial<IBuild> = {};
-    const flattenItems = [
+
+    // Tüm itemleri tek bir listede birleştir (Arama yapmak için)
+    const flattenItems: IItem[] = [
       ...(allItems.mainHand || []),
       ...(allItems.offHand || []),
       ...(allItems.head || []),
@@ -110,24 +122,29 @@ export default function BuildModal({
     ];
 
     (Object.keys(tempBuild) as Array<keyof IBuild>).forEach((key) => {
+      // Çift el silah varsa offhand'i boşalt
       if (key === "offHand" && isTwoHanded) {
         finalBuild[key] = "";
         return;
       }
+
       if (tempBuild[key]) {
         const baseItemObj = flattenItems.find((i) => i.id === tempBuild[key]);
         const s = selection[key] || { tier: 8, enchant: 0 };
+        // Helper fonksiyonu kullanarak final ID'yi oluştur
         finalBuild[key] = constructItemId(baseItemObj, s.tier, s.enchant) || "";
       } else {
         finalBuild[key] = "";
       }
     });
+
     onSave(finalBuild as IBuild);
   };
 
+  // Select Render Fonksiyonu
   const renderSelect = (
     label: string,
-    type: keyof IBuild,
+    type: keyof IBuild, // Burası artık IBuild anahtarı olmak zorunda
     collection: IItem[] = []
   ) => {
     const safeCollection = collection || [];
@@ -165,15 +182,18 @@ export default function BuildModal({
           {label}
         </label>
         <div className="flex flex-col gap-2">
+          {/* GÖRSEL + SELECT */}
           <div className="flex items-center gap-2">
             <div className="relative w-12 h-12 bg-black/40 rounded border border-slate-600 flex items-center justify-center shrink-0">
               {displayId ? (
                 <>
-                  <img
+                  <Image
                     src={`https://render.albiononline.com/v1/item/${displayId}?quality=4`}
-                    className="w-full h-full object-contain p-0.5"
-                    onError={(e) => (e.currentTarget.style.display = "none")}
                     alt={label}
+                    width={48} // w-12 = 48px
+                    height={48}
+                    className="object-contain p-0.5"
+                    unoptimized // <--- KRİTİK NOKTA: Vercel kotasını yememesi için
                   />
                   <span className="absolute bottom-0 right-0 bg-black text-white text-[9px] px-1 font-bold leading-none">
                     {currentSelection.tier}.{currentSelection.enchant}
@@ -191,6 +211,8 @@ export default function BuildModal({
                 const newItemId = e.target.value;
                 const newItem = safeCollection.find((i) => i.id === newItemId);
                 let newTier = selection[type]?.tier || 8;
+
+                // Seçilen yeni item'ın tier'ı mevcut tier ile uyumlu mu kontrol et
                 if (
                   newItem &&
                   newItem.validTiers &&
@@ -199,13 +221,14 @@ export default function BuildModal({
                   if (!newItem.validTiers.includes(newTier))
                     newTier = newItem.validTiers[newItem.validTiers.length - 1];
                 }
+
                 setTempBuild({ ...tempBuild, [type]: newItemId });
                 setSelection({
                   ...selection,
                   [type]: {
                     ...(selection[type] || { enchant: 0 }),
                     tier: newTier,
-                  } as any,
+                  },
                 });
               }}
               className={`flex-1 bg-slate-800 border border-slate-600 text-white p-1.5 text-sm rounded outline-none w-full ${
@@ -223,6 +246,7 @@ export default function BuildModal({
             </select>
           </div>
 
+          {/* TIER & ENCHANT BUTTONS */}
           {tempBuild[type] && !readOnly && (
             <div className="flex gap-2 flex-wrap">
               <div className="flex flex-col">
@@ -241,9 +265,9 @@ export default function BuildModal({
                           setSelection({
                             ...selection,
                             [type]: {
-                              ...(selection[type] || { enchant: 0 }),
+                              ...(selection[type] || { tier: 8, enchant: 0 }),
                               tier: t,
-                            } as any,
+                            },
                           })
                         }
                         className={`px-2 py-0.5 text-[10px] font-bold transition border-r border-slate-700 last:border-0 ${
@@ -274,9 +298,9 @@ export default function BuildModal({
                           setSelection({
                             ...selection,
                             [type]: {
-                              ...(selection[type] || { tier: 8 }),
+                              ...(selection[type] || { tier: 8, enchant: 0 }),
                               enchant: e,
-                            } as any,
+                            },
                           })
                         }
                         className={`px-2 py-0.5 text-[10px] font-bold transition border-r border-slate-700 last:border-0 ${
@@ -315,6 +339,7 @@ export default function BuildModal({
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 backdrop-blur-md p-2 overflow-hidden">
       <div className="bg-slate-900 p-3 rounded-xl w-full max-w-7xl border border-slate-700 shadow-2xl relative max-h-[95vh] flex flex-col">
+        {/* HEADER */}
         <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-2 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-yellow-500">
@@ -329,6 +354,7 @@ export default function BuildModal({
           </button>
         </div>
 
+        {/* SEARCH BAR (Sadece Edit modunda) */}
         {!readOnly && (
           <div className="mb-2 relative shrink-0">
             <Search
@@ -345,6 +371,7 @@ export default function BuildModal({
           </div>
         )}
 
+        {/* CONTENT GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 overflow-y-auto pr-1 custom-scrollbar grow">
           <div className="space-y-2 bg-slate-800/20 p-2 rounded h-fit">
             <h3 className="text-slate-400 font-bold mb-1 text-xs uppercase border-b border-slate-700 pb-1">
@@ -373,6 +400,7 @@ export default function BuildModal({
           </div>
         </div>
 
+        {/* FOOTER BUTTONS */}
         <div className="flex justify-end gap-2 mt-2 border-t border-slate-800 pt-2 shrink-0">
           <button
             onClick={onClose}

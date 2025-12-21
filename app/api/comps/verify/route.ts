@@ -1,3 +1,4 @@
+// app/api/comps/verify/route.ts
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import Comp from "@/models/Comp";
@@ -17,13 +18,14 @@ export async function POST(request: Request) {
     if (!comp)
       return NextResponse.json({ success: false, message: "Comp not found" });
 
-    // Veritabanındaki şifre ile girilen şifreyi karşılaştır
     if (comp.password === password) {
       return NextResponse.json({ success: true });
     } else {
       return NextResponse.json({ success: false, message: "Wrong Password" });
     }
-  } catch (error) {
+  } catch (error: unknown) {
+    // Verify işleminde detaylı hata mesajı dönmek yerine genel hata dönmek bazen daha güvenlidir
+    console.error("Verify Error:", error);
     return NextResponse.json(
       { success: false, message: "Server error" },
       { status: 500 }
