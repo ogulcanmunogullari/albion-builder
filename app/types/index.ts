@@ -35,10 +35,13 @@ export interface IBuild {
 }
 
 export interface ISlot {
-  id: number; // Map işlemlerinde key hatası almamak için şart
-  role: string;
-  weaponId: string; // Arama ve ikonlar için gerekli
+  id: number;
+  role: string; // Kullanıcının elle girdiği metin
+  roleIcon?: string; // Seçilen Discord emojisi (Örn: "🛡️")
+  weaponId: string;
   build: IBuild;
+  swapBuild?: IBuild;
+  isSwapActive?: boolean;
 }
 
 export interface IComp {

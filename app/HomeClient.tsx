@@ -10,10 +10,12 @@ import {
   Save,
   Lock,
   MapPin,
-  Repeat,
   Eye,
   Globe,
   ShieldAlert,
+  RefreshCw,
+  GripVertical,
+  Clock,
 } from "lucide-react";
 
 import { ISlot, IBuild, ICategorizedItems, IComp } from "@/types";
@@ -41,6 +43,55 @@ const SmallItemIcon = React.memo(
 );
 SmallItemIcon.displayName = "SmallItemIcon";
 
+const DISCORD_ROLE_ICONS = [
+  "🎯",
+  "👁️",
+  "⚡",
+  "🧪",
+  "📢",
+  "🛡️",
+  "🚑",
+  "⚔️",
+  "🏹",
+  "🧠",
+  "🔥",
+  "🧊",
+  "⚜️",
+  "💣",
+  "🦣",
+  "🗡️",
+  "👤",
+  "🔴",
+  "🟠",
+  "🟡",
+  "🟢",
+  "🔵",
+  "🟣",
+  "🟤",
+  "⚫",
+  "⚪",
+  "🔘",
+  "❤️",
+  "🧡",
+  "💛",
+  "💚",
+  "💙",
+  "💜",
+  "🖤",
+  "🤎",
+  "🤍",
+  "💖",
+  "💔",
+  "✅",
+  "❌",
+  "⚠️",
+  "💤",
+  "💎",
+  "⭐",
+  "🔱",
+  "🚩",
+];
+
 export default function HomeClient({
   items,
   initialData,
@@ -51,16 +102,13 @@ export default function HomeClient({
   const router = useRouter();
   const flattenItems = useMemo(() => Object.values(items).flat(), [items]);
 
-  // --- YETKİLENDİRME STATE ---
   const [hasAccess, setHasAccess] = useState(!initialData?.viewerPassword);
   const [isLocked, setIsLocked] = useState(!!initialData?.password);
   const [viewerPassInput, setViewerPassInput] = useState("");
   const [unlockPassword, setUnlockPassword] = useState("");
-
-  // --- FORM STATE ---
   const [title, setTitle] = useState(initialData?.title || "");
   const [rallyPoint, setRallyPoint] = useState(initialData?.rallyPoint || "");
-  const [swap, setSwap] = useState(initialData?.swap || "");
+  const [eventTime, setEventTime] = useState(initialData?.swap || "");
   const [composition, setComposition] = useState<ISlot[]>(
     initialData?.slots || []
   );
@@ -69,54 +117,76 @@ export default function HomeClient({
     initialData?.viewerPassword || ""
   );
   const [newPassword, setNewPassword] = useState("");
+  const [openIconPickerIndex, setOpenIconPickerIndex] = useState<number | null>(
+    null
+  );
 
-  // --- MODALLAR ---
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"main" | "swap">("main");
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [editingSlotIndex, setEditingSlotIndex] = useState<number | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<ISlot | null>(null);
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
 
-  const ROLES = [
-    "Caller",
-    "Tank",
-    "Healer",
-    "Axe",
-    "Sword",
-    "Support",
-    "Fire Staff",
-    "Frost Staff",
-    "Bow",
-    "Crossbow",
-    "Looter",
-    "Cursed Staff",
-    "Bomb Squad",
-    "Battle Mount",
-  ];
+  // --- DRAG AND DROP ---
+  const handleDragStart = (index: number) => {
+    if (isLocked) return;
+    setDraggedItemIndex(index);
+  };
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedItemIndex === null || draggedItemIndex === index) return;
+    const newComp = [...composition];
+    const draggedItem = newComp[draggedItemIndex];
+    newComp.splice(draggedItemIndex, 1);
+    newComp.splice(index, 0, draggedItem);
+    setDraggedItemIndex(index);
+    setComposition(newComp);
+  };
 
-  // --- SLOT GÜNCELLEME ---
-  const updateSlotBuild = (build: IBuild) => {
-    if (editingSlotIndex !== null) {
-      const isNew = editingSlotIndex >= composition.length;
-      const updatedSlot: ISlot = {
-        id: isNew ? Date.now() : composition[editingSlotIndex].id,
-        role: isNew ? "Tank" : composition[editingSlotIndex].role,
-        weaponId: build.mainHand,
-        build: build,
-      };
-      if (isNew) setComposition([...composition, updatedSlot]);
-      else {
-        const newComp = [...composition];
-        newComp[editingSlotIndex] = updatedSlot;
-        setComposition(newComp);
+  // --- BUILD MODAL SAVE FIX ---
+  const updateSlotBuild = (newBuild: IBuild, shouldClose: boolean = true) => {
+    if (editingSlotIndex === null) return;
+    const newComp = [...composition];
+
+    // Eğer index mevcut değilse (yeni ekleme), yeni slot oluştur
+    if (editingSlotIndex >= newComp.length) {
+      newComp.push({
+        id: Date.now(),
+        role: "",
+        roleIcon: "👤",
+        weaponId: newBuild.mainHand,
+        build: newBuild,
+        isSwapActive: false,
+      });
+    } else {
+      // Mevcut slotu güncelle
+      const targetSlot = newComp[editingSlotIndex];
+      if (modalMode === "main") {
+        targetSlot.build = newBuild;
+        targetSlot.weaponId = newBuild.mainHand;
+      } else {
+        targetSlot.swapBuild = newBuild;
       }
+    }
+
+    setComposition(newComp);
+    if (shouldClose) {
       setIsModalOpen(false);
       setEditingSlotIndex(null);
     }
   };
 
-  // --- KAYIT FONKSİYONU ---
+  const toggleSwapActive = (index: number) => {
+    const newComp = [...composition];
+    if (!newComp[index]) return;
+    newComp[index].isSwapActive = !newComp[index].isSwapActive;
+    setComposition(newComp);
+  };
+
+  // --- SAVE SETUP FIX ---
   const confirmSave = async () => {
     try {
       const isNewRecord = !initialData?._id;
@@ -127,7 +197,7 @@ export default function HomeClient({
           id: initialData?._id,
           title,
           rallyPoint,
-          swap,
+          swap: eventTime,
           isPublic,
           viewerPassword: isPublic ? "" : viewerPassword,
           password: unlockPassword || initialData?.password,
@@ -138,142 +208,96 @@ export default function HomeClient({
 
       const data = await res.json();
       if (res.ok && data.success) {
-        alert("✅ Build successfully saved!");
-        if (isNewRecord && data.id) {
-          router.push(`/comp/${data.id}`);
-        } else {
-          window.location.reload();
-        }
+        alert("✅ Setup Saved!");
+        isNewRecord ? router.push("/") : window.location.reload();
       } else {
-        alert("Hata: " + (data.error || "Registration failed."));
+        alert(`❌ Error: ${data.message || "Authorization failed"}`);
       }
     } catch {
-      alert("Connection Error! Could not connect to server.");
+      alert("Save failed!");
     }
   };
 
-  // --- SİLME FONKSİYONU ---
-  const handleDeleteComp = async () => {
-    if (!initialData?._id) return;
-    if (!confirm("⚠️ This build will be completely deleted. Are you sure?"))
-      return;
-    try {
-      const res = await fetch(`/api/comps/delete?id=${initialData._id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert("🗑️ Build Deleted.");
-        router.push("/search");
-      }
-    } catch {
-      alert("Connection Error!");
-    }
-  };
-
-  // --- DISCORD KOPYALAMA ---
   const handleCopyTemplate = () => {
     const baseUrl = window.location.origin;
     const compUrl = `${baseUrl}/comp/${initialData?._id}`;
-    const roleConfig: Record<string, { emoji: string; label: string }> = {
-      Caller: { emoji: "📢", label: "Caller" },
-      Tank: { emoji: "🛡️", label: "Tank" },
-      Support: { emoji: "🧠", label: "Support" },
-      Healer: { emoji: "🚑", label: "Healer" },
-      Sword: { emoji: "⚔️", label: "Sword" },
-      Axe: { emoji: "🪓", label: "Axe" },
-      "Fire Staff": { emoji: "🔥", label: "Fire Staff" },
-      "Frost Staff": { emoji: "🧊", label: "Frost Staff" },
-      Bow: { emoji: "🏹", label: "Bow" },
-      Crossbow: { emoji: "🏹", label: "Crossbow" },
-      Looter: { emoji: "🗡️", label: "Looter" },
-      "Cursed Staff": { emoji: "⚜️", label: "Cursed Staff" },
-      "Bomb Squad": { emoji: "💣", label: "Bomb Squad" },
-      "Battle Mount": { emoji: "🦣", label: "Battle Mount" },
-    };
-
-    const roleSummary = composition.reduce(
-      (acc: Record<string, number>, slot) => {
-        acc[slot.role] = (acc[slot.role] || 0) + 1;
-        return acc;
-      },
-      {}
-    );
-
     let text = `# ⚔️ ${title.toUpperCase()} ⚔️\n\`\`\`\n`;
     if (rallyPoint) text += `📍 RALLY: ${rallyPoint}\n`;
-    if (swap) text += `🔄 SWAP : ${swap}\n`;
-    text += "```\n";
-    // Link ve Şifre Bölümü (Yeni)
-
-    text += `\n🔗 **BUILD LINK:** ${
-      initialData?._id ? compUrl : "Not Saved Yet"
-    }\n`;
-    if (viewerPassword) {
-      text += `🔑 **VIEWER PASS:** \`${viewerPassword}\` (Case Sensitive)\n`;
-    }
-    text += "\n";
-    text += "\n**📊 ROLE SUMMARY:**\n";
+    if (eventTime) text += `⏰ TIME : ${eventTime} UTC\n`;
     text +=
-      Object.entries(roleSummary)
-        .map(([role, count]) => {
-          const config = roleConfig[role] || { emoji: "👤", label: role };
-          return `${config.emoji} ${config.label}: **${count}**`;
-        })
-        .join("  |  ") + "\n\n**👥 Player List:**\n";
-
+      "```\n🔗 **LINK:** " + (initialData?._id ? compUrl : "Not Saved") + "\n";
+    if (viewerPassword)
+      text += `🔑 **PASS:** \`${viewerPassword}\` (Case Sensitive)\n`;
+    text += "\n**👥 Player List:**\n";
     composition.forEach((slot, index) => {
-      const weaponName = getDisplayName(slot.weaponId, flattenItems);
-      const config = roleConfig[slot.role] || { emoji: "👤", label: slot.role };
       const num = (index + 1).toString().padStart(2, "0");
-      text += `\`${num}\` ${config.emoji} **${slot.role}** - ${
-        weaponName || "Any Weapon"
-      } - _@Player_\n`;
+      const icon = slot.roleIcon || "👤";
+      const mainWp = getDisplayName(slot.weaponId, flattenItems);
+      const swapWp = slot.swapBuild?.mainHand
+        ? getDisplayName(slot.swapBuild.mainHand, flattenItems)
+        : null;
+      text += `\`${num}\` ${icon} **${slot.role.toUpperCase()}** - Main: ${
+        mainWp || "Any"
+      }`;
+      if (swapWp) text += ` | 🔄 Swap: ${swapWp}`;
+      text += ` - _@Player_\n`;
     });
-
     navigator.clipboard
       .writeText(text)
-      .then(() => alert("📋 Copy to clipboard!"));
+      .then(() => alert("📋 Template copied!"));
   };
 
   const handleUnlock = () => {
     if (unlockPassword === initialData?.password) {
       setIsLocked(false);
       setShowUnlockModal(false);
-    } else alert("❌ Wrong Admin Password!");
+    } else alert("❌ Invalid Access Key!");
   };
 
-  // --- VIEWER GATE ---
+  // --- DELETE COMP FUNCTION ---
+  const handleDeleteComp = async () => {
+    if (
+      !initialData?._id ||
+      !confirm("⚠️ This build will be completely deleted. Are you sure?")
+    )
+      return;
+    try {
+      const res = await fetch(`/api/comps/delete?id=${initialData._id}`, {
+        method: "DELETE",
+      });
+      if ((await res.json()).success) {
+        alert("🗑️ Deleted.");
+        router.push("/");
+      }
+    } catch {
+      alert("Error deleting build!");
+    }
+  };
+
   if (!hasAccess && initialData?.viewerPassword) {
     return (
-      <div className="fixed inset-0 bg-slate-950 flex items-center justify-center z-500 p-4 backdrop-blur-md">
+      <div className="fixed inset-0 bg-slate-950 flex items-center justify-center z-[500] p-4 backdrop-blur-md">
         <div className="max-w-sm w-full bg-slate-900 border border-slate-800 p-8 rounded-[40px] text-center space-y-6 shadow-2xl">
           <Lock size={40} className="mx-auto text-red-500" />
-          <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">
-            Protected To View
+          <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter leading-none">
+            Security Protocol
           </h2>
           <input
             type="password"
             value={viewerPassInput}
             onChange={(e) => setViewerPassInput(e.target.value)}
-            onKeyDown={(e) =>
-              e.key === "Enter" &&
-              (viewerPassInput === initialData?.viewerPassword
-                ? setHasAccess(true)
-                : alert("Hatalı!"))
-            }
-            className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white font-bold outline-none focus:border-red-500"
-            placeholder="Viewer Password..."
+            className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white outline-none focus:border-red-500 font-bold"
+            placeholder="Access Code..."
           />
           <button
             onClick={() =>
               viewerPassInput === initialData?.viewerPassword
                 ? setHasAccess(true)
-                : alert("Hatalı!")
+                : alert("Access Denied!")
             }
-            className="w-full py-4 bg-red-600 text-white font-black rounded-2xl uppercase tracking-widest"
+            className="w-full py-4 bg-red-600 text-white font-black rounded-2xl uppercase tracking-[0.2em] shadow-lg"
           >
-            View Build
+            Authenticate Intel
           </button>
         </div>
       </div>
@@ -283,14 +307,13 @@ export default function HomeClient({
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 lg:p-8 pb-20 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* HEADER */}
         <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-2xl relative overflow-hidden">
           <input
             value={title}
             onChange={(e) => !isLocked && setTitle(e.target.value)}
             disabled={isLocked}
-            className="w-full bg-transparent text-3xl font-black border-b border-slate-800 focus:border-yellow-500 outline-none p-2 italic uppercase tracking-tighter"
-            placeholder="Build Title..."
+            className="w-full bg-transparent text-3xl font-black border-b border-slate-800 focus:border-yellow-500 outline-none p-2 uppercase italic tracking-tighter"
+            placeholder="Enter Event Title Here..."
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="relative">
@@ -302,64 +325,79 @@ export default function HomeClient({
                 value={rallyPoint}
                 onChange={(e) => !isLocked && setRallyPoint(e.target.value)}
                 disabled={isLocked}
-                className="w-full bg-slate-950 p-3 pl-10 rounded-xl border border-slate-800 outline-none italic"
-                placeholder="Rally Point"
+                className="w-full bg-slate-950 p-3 pl-10 rounded-xl border border-slate-800 outline-none italic placeholder:text-slate-700"
+                placeholder="Enter Deployment Rally Point Here..."
               />
             </div>
             <div className="relative">
-              <Repeat
+              <Clock
                 className="absolute left-3 top-3 text-slate-500"
                 size={18}
               />
               <input
-                value={swap}
-                onChange={(e) => !isLocked && setSwap(e.target.value)}
+                value={eventTime}
+                onChange={(e) => !isLocked && setEventTime(e.target.value)}
                 disabled={isLocked}
-                className="w-full bg-slate-950 p-3 pl-10 rounded-xl border border-slate-800 outline-none italic"
-                placeholder="Swap Info"
+                className="w-full bg-slate-950 p-3 pl-10 rounded-xl border border-slate-800 outline-none italic placeholder:text-slate-700"
+                placeholder="Enter Event Time Here... (e.g. 18:00 UTC)"
               />
             </div>
           </div>
         </div>
 
-        {/* TEAM COMPOSITION */}
         <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
-          <div className="p-4 bg-slate-800/30 flex flex-wrap justify-between items-center gap-3 border-b border-slate-800">
-            <div className="flex items-center gap-3">
-              <h3 className="font-black text-slate-400 uppercase text-xs italic">
-                Team Composition
-              </h3>
+          <div className="p-4 bg-slate-800/30 grid grid-cols-1 md:grid-cols-3 items-center gap-4 border-b border-slate-800">
+            <div className="flex flex-col items-center md:items-start text-center md:text-left">
+              {!isLocked && (
+                <span className="text-[9px] text-yellow-600 font-black uppercase italic mt-1 animate-pulse tracking-tighter">
+                  Drag & Drop Sort
+                </span>
+              )}
+            </div>
+            <div className="flex justify-center">
               <button
                 onClick={handleCopyTemplate}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] transition-all uppercase italic shadow-lg shadow-indigo-600/20"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-2.5 rounded-xl font-black text-[11px] flex items-center gap-2 uppercase italic shadow-lg shadow-indigo-600/30 transition-all active:scale-95 border border-indigo-400/20 tracking-[0.1em]"
               >
-                <Copy size={12} /> Copy Discord Template
+                <Copy size={16} /> Copy Discord Template
               </button>
             </div>
-            <div className="flex gap-2">
+
+            <div className="flex justify-center md:justify-end gap-2">
               {isLocked ? (
                 <button
                   onClick={() => setShowUnlockModal(true)}
-                  className="bg-red-600/10 text-red-500 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white"
+                  className="bg-red-600/10 text-red-500 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white shadow-inner"
                 >
-                  <Lock size={14} /> Unlock to Edit
+                  <Lock size={14} /> Admin Access
                 </button>
               ) : (
-                <div className="flex gap-2">
-                  {initialData?._id && (
+                <div className="flex justify-center md:justify-end gap-2">
+                  {isLocked ? (
                     <button
-                      onClick={handleDeleteComp}
-                      className="bg-red-600/10 text-red-500 font-black py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white"
+                      onClick={() => setShowUnlockModal(true)}
+                      className="bg-red-600/10 text-red-500 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white shadow-inner"
                     >
-                      <Trash2 size={14} /> Delete
+                      <Lock size={14} /> Admin Access
                     </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      {initialData?._id && (
+                        <button
+                          onClick={handleDeleteComp}
+                          className="bg-red-600/10 text-red-500 font-black py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white"
+                        >
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setShowPasswordModal(true)}
+                        className="bg-blue-600 hover:bg-blue-500 text-white font-black py-2 px-4 rounded-xl flex items-center gap-2 transition text-xs uppercase shadow-lg shadow-blue-600/20 border border-blue-400/20"
+                      >
+                        <Save size={14} /> Save Setup
+                      </button>
+                    </div>
                   )}
-                  <button
-                    onClick={() => setShowPasswordModal(true)}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-black py-2 px-4 rounded-xl flex items-center gap-2 transition text-xs uppercase shadow-lg shadow-blue-600/20"
-                  >
-                    <Save size={14} /> Save Settings
-                  </button>
                 </div>
               )}
             </div>
@@ -369,90 +407,203 @@ export default function HomeClient({
             {composition.map((slot, index) => (
               <div
                 key={slot.id}
-                className="flex flex-col lg:flex-row items-center gap-4 p-4 hover:bg-slate-800/20 transition group"
+                draggable={!isLocked}
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={() => setDraggedItemIndex(null)}
+                className={`p-4 transition-all group space-y-3 relative ${
+                  draggedItemIndex === index
+                    ? "opacity-20 bg-yellow-500/5 scale-[0.98]"
+                    : "hover:bg-slate-800/10"
+                }`}
               >
-                <span className="font-mono text-slate-600 font-bold w-6">
-                  {(index + 1).toString().padStart(2, "0")}
-                </span>
-                <select
-                  value={slot.role}
-                  disabled={isLocked}
-                  onChange={(e) => {
-                    const newComp = [...composition];
-                    newComp[index].role = e.target.value;
-                    setComposition(newComp);
-                  }}
-                  className="bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm font-bold text-blue-400 w-36 outline-none uppercase italic"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex gap-1 flex-wrap justify-center lg:justify-start">
-                  {Object.entries(slot.build).map(([key, itemId]) => (
-                    <SmallItemIcon
-                      key={key}
-                      id={itemId as string}
-                      name={getDisplayName(itemId as string, flattenItems)}
-                    />
-                  ))}
-                </div>
-                <div className="flex-1 font-bold text-slate-200 text-center lg:text-left truncate uppercase italic tracking-tighter">
-                  {getDisplayName(slot.weaponId, flattenItems) || "Any Weapon"}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedSlot(slot);
-                      setIsViewModalOpen(true);
-                    }}
-                    className="p-2 text-slate-500 hover:text-white transition"
+                <div className="flex flex-col lg:flex-row items-center gap-4">
+                  <div
+                    className={`flex flex-col items-center justify-center p-1 text-slate-700 transition ${
+                      isLocked
+                        ? "hidden"
+                        : "cursor-grab active:cursor-grabbing hover:text-yellow-500 block"
+                    }`}
                   >
-                    <Eye size={20} />
-                  </button>
-                  {!isLocked && (
-                    <>
+                    <span className="text-[7px] font-black text-slate-600 uppercase mb-0.5 tracking-tighter">
+                      Sort
+                    </span>
+                    <GripVertical size={22} />
+                  </div>
+                  <span className="font-mono text-slate-600 font-bold w-4">
+                    {(index + 1).toString().padStart(2, "0")}
+                  </span>
+                  <div className="flex gap-1 items-center bg-slate-950 border border-slate-700 rounded-xl p-1 shadow-inner shrink-0 group-hover:border-slate-500 transition-colors">
+                    {/* ICON PICKER AREA */}
+                    <div className="relative">
                       <button
-                        onClick={() => {
-                          const source = composition[index];
-                          const newSlot = {
-                            ...source,
-                            id: Date.now(),
-                            build: { ...source.build },
-                          };
-                          const newComp = [...composition];
-                          newComp.splice(index + 1, 0, newSlot);
-                          setComposition(newComp);
+                        type="button"
+                        disabled={isLocked}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenIconPickerIndex(
+                            openIconPickerIndex === index ? null : index
+                          );
                         }}
-                        className="p-2 text-slate-500 hover:text-blue-400 transition"
-                        title="Duplicate"
+                        className="bg-slate-800 text-lg px-2 py-1 rounded-lg hover:bg-slate-700 transition shadow flex items-center justify-center min-w-[44px] h-[36px] border border-slate-700 active:scale-95"
                       >
-                        <Copy size={18} />
+                        {slot.roleIcon || "👤"}
                       </button>
+                      {openIconPickerIndex === index && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+                            onClick={() => setOpenIconPickerIndex(null)}
+                          />
+                          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[210] bg-slate-900 border border-slate-700 p-4 rounded-[32px] shadow-[0_0_50px_rgba(0,0,0,0.8)] w-[90%] max-w-[400px] animate-in zoom-in-95 duration-200">
+                            <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2 max-h-[60vh] overflow-y-auto p-1">
+                              {DISCORD_ROLE_ICONS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => {
+                                    const newComp = [...composition];
+                                    newComp[index].roleIcon = emoji;
+                                    setComposition(newComp);
+                                    setOpenIconPickerIndex(null);
+                                  }}
+                                  className="text-2xl p-2 hover:bg-slate-800 rounded-2xl transition-all hover:scale-125 active:scale-90 flex items-center justify-center"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => setOpenIconPickerIndex(null)}
+                              className="w-full mt-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-[10px] font-black uppercase rounded-2xl transition-all border border-slate-700/50"
+                            >
+                              Dismiss Picker
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      value={slot.role}
+                      disabled={isLocked}
+                      onChange={(e) => {
+                        const newComp = [...composition];
+                        newComp[index].role = e.target.value;
+                        setComposition(newComp);
+                      }}
+                      placeholder="Enter Role Here..."
+                      className="bg-transparent text-xs font-black text-blue-400 w-40 outline-none uppercase italic px-2 placeholder:text-slate-800"
+                    />
+                  </div>
+                  <div
+                    className="flex gap-1 flex-wrap cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isLocked) {
+                        setEditingSlotIndex(index);
+                        setModalMode("main");
+                        setIsModalOpen(true);
+                      }
+                    }}
+                  >
+                    {Object.entries(slot.build).map(([key, itemId]) => (
+                      <SmallItemIcon
+                        key={key}
+                        id={itemId as string}
+                        name={getDisplayName(itemId as string, flattenItems)}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex-1 font-bold text-slate-200 text-center lg:text-left truncate uppercase italic tracking-tighter leading-none">
+                    {getDisplayName(slot.weaponId, flattenItems) ||
+                      "Empty Unit Slot"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleSwapActive(index)}
+                      className={`p-2 rounded-lg transition shadow-sm ${
+                        slot.isSwapActive
+                          ? "bg-yellow-500 text-black shadow-yellow-500/20"
+                          : "text-slate-500 hover:text-white bg-slate-800/50"
+                      }`}
+                    >
+                      <RefreshCw size={20} />
+                    </button>
+                    {!isLocked && (
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setEditingSlotIndex(index);
+                          setModalMode("main");
                           setIsModalOpen(true);
                         }}
-                        className="bg-yellow-600/10 text-yellow-500 px-4 py-1.5 rounded-lg border border-yellow-600/20 font-bold hover:bg-yellow-600 hover:text-black transition flex items-center gap-1 text-xs"
+                        className="bg-blue-600/10 text-blue-500 p-2 rounded-lg border border-blue-600/20 hover:bg-blue-600 hover:text-white transition shadow-sm shadow-blue-900/10"
                       >
-                        <Edit size={14} /> Edit
+                        <Edit size={20} />
                       </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSelectedSlot(slot);
+                        setIsViewModalOpen(true);
+                      }}
+                      className="p-2 text-slate-500 hover:text-white transition"
+                    >
+                      <Eye size={20} />
+                    </button>
+                    {!isLocked && (
                       <button
                         onClick={() =>
                           setComposition(
                             composition.filter((_, i) => i !== index)
                           )
                         }
-                        className="p-2 text-slate-600 hover:text-red-500 transition"
+                        className="p-2 text-slate-600 hover:text-red-500 transition hover:bg-red-500/5 rounded-lg"
                       >
                         <Trash2 size={20} />
                       </button>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
+
+                {slot.isSwapActive && (
+                  <div className="ml-16 p-4 bg-yellow-500/5 border-l-2 border-yellow-500/30 rounded-r-2xl flex flex-wrap items-center gap-4 animate-in slide-in-from-left-2 duration-300">
+                    <span className="text-[10px] font-black text-yellow-500 uppercase italic tracking-widest leading-none">
+                      🔄 Swap:
+                    </span>
+                    <div
+                      className="flex gap-1 flex-wrap cursor-pointer"
+                      onClick={() =>
+                        !isLocked &&
+                        (setEditingSlotIndex(index),
+                        setModalMode("swap"),
+                        setIsModalOpen(true))
+                      }
+                    >
+                      {slot.swapBuild ? (
+                        Object.entries(slot.swapBuild)
+                          .filter(
+                            ([key, itemId]) =>
+                              itemId && itemId !== "" && key !== "_id"
+                          )
+                          .map(([key, itemId]) => (
+                            <SmallItemIcon
+                              key={key}
+                              id={itemId as string}
+                              name={getDisplayName(
+                                itemId as string,
+                                flattenItems
+                              )}
+                            />
+                          ))
+                      ) : (
+                        <div className="text-[10px] text-yellow-500/30 font-black uppercase italic px-4 py-2 border border-dashed border-yellow-500/10 rounded-lg tracking-[0.2em]">
+                          Save Tactical Swap
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -460,42 +611,62 @@ export default function HomeClient({
             <button
               onClick={() => {
                 setEditingSlotIndex(composition.length);
+                setModalMode("main");
                 setIsModalOpen(true);
               }}
-              className="w-full py-6 bg-slate-800/10 hover:bg-yellow-500/5 text-slate-500 hover:text-yellow-500 transition-all border-t border-slate-800 font-bold flex justify-center items-center gap-2 uppercase tracking-[0.2em] text-sm italic"
+              className="w-full py-5 bg-slate-800/10 hover:bg-yellow-500/5 text-slate-500 hover:text-yellow-500 transition-all border-t border-slate-800 font-black flex justify-center items-center gap-3 uppercase tracking-[0.4em] text-sm italic active:bg-yellow-500/10"
             >
-              <Plus size={20} /> Add New Player
+              <Plus size={20} /> Add New Role
             </button>
           )}
         </div>
       </div>
 
-      {/* ADMIN UNLOCK MODAL */}
+      <BuildModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingSlotIndex(null);
+        }}
+        slot={editingSlotIndex !== null ? composition[editingSlotIndex] : null}
+        onSave={(build) => updateSlotBuild(build, true)}
+        onSoftSave={(build) => updateSlotBuild(build, false)}
+        allItems={items}
+        mode={modalMode}
+        setModalMode={setModalMode}
+      />
+      <ViewBuildModal
+        isOpen={isViewModalOpen}
+        onClose={() => setIsViewModalOpen(false)}
+        slot={selectedSlot}
+        allItems={items}
+      />
+
       {showUnlockModal && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-700 backdrop-blur-md p-4">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[700] backdrop-blur-md p-4 text-center">
           <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-700 w-full max-w-sm text-center space-y-6 shadow-2xl">
             <ShieldAlert size={48} className="mx-auto text-yellow-500" />
             <h3 className="text-xl font-black text-white uppercase italic tracking-widest">
-              Admin Unlock
+              Admin Authorization
             </h3>
             <input
               type="password"
               value={unlockPassword}
               onChange={(e) => setUnlockPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-              className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white font-bold outline-none focus:border-yellow-500"
+              className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white outline-none focus:border-yellow-500 font-bold tracking-widest"
               placeholder="Admin Password..."
             />
             <div className="flex gap-2">
               <button
                 onClick={() => setShowUnlockModal(false)}
-                className="flex-1 py-3 text-slate-500 font-bold"
+                className="flex-1 py-3 text-slate-500 font-black uppercase text-xs tracking-widest transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleUnlock}
-                className="flex-1 py-4 bg-yellow-600 text-black font-black rounded-2xl uppercase text-xs"
+                className="flex-1 py-4 bg-yellow-600 text-black font-black rounded-2xl uppercase text-xs tracking-widest shadow-lg shadow-yellow-600/30"
               >
                 Unlock
               </button>
@@ -504,103 +675,83 @@ export default function HomeClient({
         </div>
       )}
 
-      {/* SAVE SETTINGS MODAL */}
       {showPasswordModal && (
-        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-600 backdrop-blur-md p-4">
-          <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-700 w-full max-w-md space-y-6 shadow-2xl">
-            <h3 className="text-xl font-black text-white text-center uppercase tracking-[0.3em] italic">
-              Settings
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[600] backdrop-blur-md p-4 text-center">
+          <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-700 w-full max-w-md space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-black text-white text-center uppercase tracking-[0.3em] italic leading-none">
+              Save Setup
             </h3>
             <div className="space-y-5">
-              <div className="flex gap-2 p-1.5 bg-slate-950 rounded-3xl border border-slate-800">
+              <div className="flex gap-2 p-1.5 bg-slate-950 rounded-3xl border border-slate-800 shadow-inner">
                 <button
                   type="button"
                   onClick={() => setIsPublic(true)}
-                  className={`flex-1 py-4 rounded-[18px] font-bold transition-all flex items-center justify-center gap-2 ${
+                  className={`flex-1 py-4 rounded-[18px] font-black flex items-center justify-center gap-2 transition-all text-xs tracking-widest ${
                     isPublic
-                      ? "bg-yellow-600 text-black shadow-lg"
-                      : "text-slate-500"
+                      ? "bg-yellow-600 text-black shadow-lg shadow-yellow-600/20"
+                      : "text-slate-600"
                   }`}
                 >
-                  <Globe size={18} /> Public
+                  <Globe size={18} /> PUBLIC
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsPublic(false)}
-                  className={`flex-1 py-4 rounded-[18px] font-bold transition-all flex items-center justify-center gap-2 ${
+                  className={`flex-1 py-4 rounded-[18px] font-black flex items-center justify-center gap-2 transition-all text-xs tracking-widest ${
                     !isPublic
-                      ? "bg-red-600 text-white shadow-lg"
-                      : "text-slate-500"
+                      ? "bg-red-600 text-white shadow-lg shadow-red-600/20"
+                      : "text-slate-600"
                   }`}
                 >
-                  <Lock size={18} /> Private
+                  <Lock size={18} /> PRIVATE
                 </button>
               </div>
               {!isPublic && (
-                <div className="space-y-1 animate-in fade-in zoom-in-95 duration-200">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-3 tracking-widest italic">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-3 italic tracking-widest">
                     Viewer Password
                   </label>
                   <input
                     type="password"
                     value={viewerPassword}
                     onChange={(e) => setViewerPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 p-4 rounded-[20px] text-white outline-none focus:border-red-500 italic"
+                    className="w-full bg-slate-950 border border-slate-800 p-4 rounded-[20px] text-white outline-none font-bold italic tracking-widest placeholder:text-slate-800"
                     placeholder="Set viewer pass..."
                   />
                 </div>
               )}
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-3 tracking-widest italic">
-                  Admin Password (Edit)
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-3 italic tracking-widest">
+                  Admin Access Key
                 </label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 p-4 rounded-[20px] text-white outline-none focus:border-yellow-500 italic"
+                  className="w-full bg-slate-950 border border-slate-800 p-4 rounded-[20px] text-white outline-none font-bold italic tracking-widest placeholder:text-slate-800"
                   placeholder="Set admin pass..."
                 />
               </div>
             </div>
             <div className="flex gap-3 pt-4">
               <button
+                type="button"
                 onClick={() => setShowPasswordModal(false)}
-                className="flex-1 py-4 text-slate-500 font-bold uppercase text-xs"
+                className="flex-1 py-4 text-slate-500 font-black uppercase text-xs tracking-widest transition-colors hover:text-slate-300"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={confirmSave}
-                className="flex-1 py-4 bg-blue-600 text-white font-black rounded-[22px] uppercase text-xs shadow-lg shadow-blue-600/20"
+                className="flex-1 py-4 bg-blue-600 text-white font-black rounded-[22px] uppercase shadow-lg text-xs tracking-widest shadow-blue-600/20 hover:bg-blue-500 active:scale-95 transition-all"
               >
-                Save All
+                Save Setup
               </button>
             </div>
           </div>
         </div>
       )}
-
-      <BuildModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingSlotIndex(null);
-        }}
-        slot={
-          editingSlotIndex !== null && editingSlotIndex < composition.length
-            ? composition[editingSlotIndex]
-            : null
-        }
-        onSave={updateSlotBuild}
-        allItems={items}
-      />
-      <ViewBuildModal
-        isOpen={isViewModalOpen}
-        onClose={() => setIsViewModalOpen(false)}
-        slot={selectedSlot}
-        allItems={items}
-      />
     </div>
   );
 }

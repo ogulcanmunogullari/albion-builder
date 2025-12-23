@@ -13,12 +13,25 @@ interface ICompDoc extends Document {
   slots: ISlot[];
 }
 
+// Build yapısını tekrar etmemek için ortak bir obje olarak tanımlayalım
+const BuildSchema = {
+  mainHand: { type: String, default: "" },
+  offHand: { type: String, default: "" },
+  head: { type: String, default: "" },
+  armor: { type: String, default: "" },
+  shoes: { type: String, default: "" },
+  cape: { type: String, default: "" },
+  mount: { type: String, default: "" },
+  food: { type: String, default: "" },
+  potion: { type: String, default: "" },
+};
+
 const CompSchema = new Schema<ICompDoc>({
   title: { type: String, required: true },
   description: String,
   rallyPoint: String,
   swap: String,
-  password: { type: String }, // Admin şifresi burada saklanır
+  password: { type: String },
   viewerPassword: { type: String, default: "" },
   isPublic: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
@@ -27,17 +40,11 @@ const CompSchema = new Schema<ICompDoc>({
       id: Number,
       role: String,
       weaponId: String,
-      build: {
-        mainHand: { type: String, default: "" },
-        offHand: { type: String, default: "" },
-        head: { type: String, default: "" },
-        armor: { type: String, default: "" },
-        shoes: { type: String, default: "" },
-        cape: { type: String, default: "" },
-        mount: { type: String, default: "" },
-        food: { type: String, default: "" },
-        potion: { type: String, default: "" },
-      },
+      build: BuildSchema, // Ana Build
+      // --- YENİ ALANLAR BURADA ---
+      roleIcon: { type: String, default: "👤" },
+      swapBuild: { type: BuildSchema, default: null }, // Swap Build Alanı
+      isSwapActive: { type: Boolean, default: false }, // UI'da swap açık mı?
     },
   ],
 });
