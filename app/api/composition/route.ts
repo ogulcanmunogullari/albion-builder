@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import Comp from "@/models/Comp";
+import Comp, { ICompDoc } from "@/models/Comp";
 import { IComposition } from "@/types";
 
 export async function POST(req: NextRequest) {
@@ -13,12 +13,16 @@ export async function POST(req: NextRequest) {
     // Şifre boş string ise null veya undefined yapalım ki veritabanı temiz kalsın (opsiyonel)
     // Ancak modelde default değer vermediğimiz için string olarak kalması daha iyi.
 
-    const newComp = await Comp.create({
+    const newComp = (await Comp.create({
       ...otherData,
       swap: eventTime, // UI 'eventTime' gönderiyor, DB 'swap' sütununa yazıyor
-    });
+    })) as unknown as ICompDoc;
 
-    return NextResponse.json({ success: true, data: newComp, id: newComp._id });
+    return NextResponse.json({
+      success: true,
+      data: newComp,
+      id: newComp._id,
+    });
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
