@@ -3,22 +3,32 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Search, Users, LayoutGrid, Globe, Lock, Calendar } from "lucide-react";
-import { IComp } from "@/types"; // Tanımladığımız tipi import ediyoruz
+import { IComposition } from "types"; // Tanımladığımız tipi import ediyoruz
 
 export default function SearchPage() {
-  // any[] yerine IComp[] kullanarak tip güvenliğini sağlıyoruz
-  const [comps, setComps] = useState<IComp[]>([]);
+  // any[] yerine IComposition[] kullanarak tip güvenliğini sağlıyoruz
+  const [comps, setComps] = useState<IComposition[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    fetch("/api/comps/list")
+    // Ölçümü başlatıyoruz
+    console.time("⏱️ FETCH_COMPOSITIONS");
+
+    fetch("/api/composition/list")
       .then((res) => res.json())
       .then((data) => {
+        // Ölçümü bitirip konsola yazdırıyoruz
+        console.timeEnd("⏱️ FETCH_COMPOSITIONS");
+
         setComps(Array.isArray(data) ? data : []);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        console.error("❌ Fetch Error:", err);
+        console.timeEnd("⏱️ FETCH_COMPOSITIONS");
+        setLoading(false);
+      });
   }, []);
 
   const filtered = comps.filter((c) =>
@@ -60,7 +70,7 @@ export default function SearchPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((comp) => (
-              <Link href={`/comp/${comp._id}`} key={comp._id}>
+              <Link href={`/composition/${comp._id}`} key={comp._id}>
                 <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl hover:border-yellow-500/50 hover:bg-slate-800/40 transition-all group flex flex-col justify-between h-44 shadow-lg relative overflow-hidden">
                   <div>
                     <h3 className="text-xl font-black text-slate-200 group-hover:text-white truncate transition-colors uppercase italic tracking-tighter">
@@ -76,7 +86,7 @@ export default function SearchPage() {
 
                   <div className="flex items-center justify-between font-black text-[11px] uppercase tracking-wider italic">
                     <div className="flex items-center gap-1.5 text-blue-400 bg-blue-500/5 px-2.5 py-1.5 rounded-xl border border-blue-500/10 shadow-sm">
-                      <Users size={14} /> {comp.slots?.length || 0} Players
+                      <Users size={14} /> {comp.slots?.toString() || 0} Players
                     </div>
 
                     {comp.viewerPassword ? (

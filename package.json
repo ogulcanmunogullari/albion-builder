@@ -10,12 +10,14 @@
   },
   "dependencies": {
     "dotenv": "^17.2.3",
+    "framer-motion": "^12.23.26",
     "lucide-react": "^0.562.0",
     "mongodb": "^7.0.0",
     "mongoose": "^9.0.2",
     "next": "16.0.10",
     "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react-dom": "19.2.1",
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
