@@ -63,3 +63,42 @@ export interface IComposition {
   slots: IPlayer[]; // Oyuncu listesi
   createdAt?: string | Date;
 }
+
+export interface ICompUiState {
+  // Access & Lock
+  hasAccess: boolean;
+  isLocked: boolean;
+  viewerPassInput: string;
+  unlockPassword: string;
+
+  // Header Inputs
+  title: string;
+  rallyPoint: string;
+  eventTime: string;
+
+  // Modals & Selection
+  isModalOpen: boolean;
+  isViewModalOpen: boolean;
+  showUnlockModal: boolean;
+  showPasswordModal: boolean;
+  editingPlayerId: number | null;
+  selectedSlot: IPlayer | null;
+
+  // Errors
+  errors: { title: boolean; rally: boolean; time: boolean };
+
+  // Save Modal Inputs
+  isPublic: boolean;
+  viewerPassword: string; // Kayıt sırasındaki input
+  newPassword: string; // Admin şifresi (yeni veya mevcut)
+  showAdminPass: boolean;
+  isSaving: boolean;
+
+  // Drag & Drop
+  draggedItemIndex: number | null;
+
+  // Actions
+  setUi: (partial: Partial<ICompUiState>) => void;
+  initializeUi: (data: IComposition | undefined, hasAdminPass: boolean) => void;
+  resetUi: () => void;
+}

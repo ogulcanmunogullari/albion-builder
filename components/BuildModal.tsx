@@ -14,19 +14,16 @@ import {
   Loader2,
 } from "lucide-react";
 
-// Store
+// Storelar
 import { useCompositionStore } from "@/store/useCompositionStore";
-// getItemsBySlot servisini kaldırdık, doğrudan fetch kullanacağız
+import { useItemUiStore } from "@/store/useItemUiStore";
+import { useCompositionUiStore } from "@/store/useCompositionUiStore"; // YENİ EKLENDİ
+
 import { constructItemId } from "@/utils/helpers";
 import { IBuild, IItem } from "@/types";
 import ItemLoader from "@/components/ItemLoader";
 
-interface BuildModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  playerId: number;
-  readOnly?: boolean;
-}
+// Props Interface'i silindi çünkü artık her şey Store'dan geliyor.
 
 const SLOT_CONFIG: { key: keyof IBuild; label: string; icon: LucideIcon }[] = [
   { key: "mainHand", label: "Main Hand", icon: Sword },
@@ -40,14 +37,35 @@ const SLOT_CONFIG: { key: keyof IBuild; label: string; icon: LucideIcon }[] = [
   { key: "food", label: "Food", icon: Shirt },
 ];
 
-export default function BuildModal({
-  isOpen,
-  onClose,
-  playerId,
-  readOnly = false,
-}: BuildModalProps) {
-  // --- STORE BAĞLANTISI ---
+export default function BuildModal() {
+  // --- STORE BAĞLANTILARI ---
   const { comp, setPlayerItem } = useCompositionStore();
+
+  // ITEM UI STORE (Eşya verileri ve filtreler)
+  const {
+    slotItems,
+    isLoading,
+    searchTerm,
+    selectedTier,
+    selectedEnchant,
+    fetchItems,
+    setFilter,
+    resetUi: resetItemUi, // İsim çakışmasını önlemek için yeniden adlandırdık
+  } = useItemUiStore();
+
+  // COMPOSITION UI STORE (Modal durumu, Player ID ve Yetki)
+  const { isModalOpen, editingPlayerId, isLocked, setUi } =
+    useCompositionUiStore();
+
+  // Props yerine Store değişkenlerini yerel değişkenlere atıyoruz
+  const isOpen = isModalOpen;
+  const playerId = editingPlayerId;
+  const readOnly = isLocked;
+
+  // Kapatma Fonksiyonu (Store üzerinden)
+  const onClose = () => {
+    setUi({ isModalOpen: false, editingPlayerId: null });
+  };
 
   const currentPlayer = comp.slots.find((s) => s.id === playerId);
 
@@ -68,18 +86,9 @@ export default function BuildModal({
   const [tempBuild, setTempBuild] = useState<IBuild>(defaultBuild);
   const [activeSlot, setActiveSlot] = useState<keyof IBuild>("mainHand");
 
-  // Veri Çekme State'leri
-  const [slotItems, setSlotItems] = useState<IItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Filtreleme State'leri
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTier, setSelectedTier] = useState<number>(8);
-  const [selectedEnchant, setSelectedEnchant] = useState<number>(0);
-
   const isSpecialSlot = ["mount", "food", "potion"].includes(activeSlot);
 
-  // 1. Modal Açılınca veya Mod Değişince Veriyi Store'dan Al
+  // 1. Modal Açılınca Veriyi Al
   useEffect(() => {
     if (!isOpen || !currentPlayer) return;
 
@@ -95,82 +104,66 @@ export default function BuildModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, playerId, mode, currentPlayer]);
 
-  // 2. Active Slot Değişince API'den Veri Çek (GÜNCELLENEN KISIM)
+  // 2. Active Slot Değişince Veri Çek
   useEffect(() => {
     if (!isOpen) return;
 
-    const fetchItems = async () => {
-      setIsLoading(true);
-      try {
-        // API'ye seçili slotu (category) parametre olarak gönderiyoruz.
-        // Örn: /api/items?category=mainHand
-        const response = await fetch(`/api/items?category=${activeSlot}`);
+    fetchItems(activeSlot);
+    setFilter("searchTerm", "");
+  }, [activeSlot, fetchItems, isOpen, setFilter]);
 
-        if (!response.ok) {
-          throw new Error("Veri çekilemedi");
-        }
-
-        const data = await response.json();
-        setSlotItems(data);
-      } catch (error) {
-        console.error("Item fetch error:", error);
-        setSlotItems([]); // Hata durumunda listeyi temizle
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchItems();
-    setSearchTerm(""); // Slot değişince aramayı temizle
-  }, [activeSlot, isOpen]);
-
-  // 3. Mod Değişimi (Soft Save Mantığı)
+  // 3. Mod Değişimi
   const handleModeChange = (newMode: "main" | "swap") => {
     if (mode === newMode) return;
     handleSaveToStore(mode);
     setMode(newMode);
   };
 
-  // 4. Store'a Kaydetme Fonksiyonu
+  // 4. Store'a Kaydetme
   const handleSaveToStore = (targetMode: "main" | "swap") => {
     if (!currentPlayer) return;
 
     Object.keys(tempBuild).forEach((key) => {
       const part = key as keyof IBuild;
       const itemId = tempBuild[part];
-
       const currentInStore =
         targetMode === "swap"
           ? currentPlayer.swapBuild?.[part]
           : currentPlayer.build[part];
 
       if (itemId !== currentInStore) {
-        setPlayerItem(playerId, targetMode === "swap", part, itemId);
+        setPlayerItem(playerId!, targetMode === "swap", part, itemId);
       }
     });
   };
 
-  // Save Butonu İçin Wrapper
   const handleManualSave = () => {
     const finalBuild = { ...tempBuild };
+    const isTwoHanded = finalBuild.mainHand?.includes("2H");
     if (isTwoHanded) finalBuild.offHand = "";
 
     handleSaveToStore(mode);
+
+    // Her iki store'u da temizleyip kapatıyoruz
+    resetItemUi();
     onClose();
   };
 
-  // --- ITEM FİLTRELEME MANTIĞI (Client-Side) ---
+  const handleClose = () => {
+    resetItemUi();
+    onClose();
+  };
+
+  // --- ITEM FİLTRELEME MANTIĞI ---
   const processedItems = useMemo(() => {
     if (!slotItems.length) return {};
 
-    // 1. İsim Araması (Client Side devam ediyor, hızlı UI için)
     const filtered = searchTerm
       ? slotItems.filter((item) =>
           item.name.toLowerCase().includes(searchTerm.toLowerCase())
         )
       : slotItems;
 
-    // 2. Gruplama ve Tier Mantığı
     const uniqueItemsMap = new Map<string, IItem>();
 
     filtered.forEach((item) => {
@@ -190,7 +183,6 @@ export default function BuildModal({
             ...(item.validTiers || [item.tier]),
           ])
         ).sort((a, b) => a - b);
-
         if (item.tier > existing.tier) {
           existing.id = item.id;
           existing.tier = item.tier;
@@ -200,14 +192,12 @@ export default function BuildModal({
 
     let finalItems = Array.from(uniqueItemsMap.values());
 
-    // 3. Seçili Tier Filtresi
     if (!isSpecialSlot) {
       finalItems = finalItems.filter((item) =>
         item.validTiers?.includes(selectedTier)
       );
     }
 
-    // 4. Alt Kategoriye Göre Grupla (SubCategory zaten API'den geliyor)
     const groups: Record<string, IItem[]> = {};
     finalItems.forEach((item) => {
       const g = item.subCategory || "Other";
@@ -240,7 +230,6 @@ export default function BuildModal({
       : item.category === "mount"
       ? 0
       : 4;
-
     const targetEnchant = Math.min(
       Math.max(selectedEnchant, item.minEnchantment || 0),
       maxEnch
@@ -275,20 +264,20 @@ export default function BuildModal({
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 hover:bg-slate-800 rounded-full transition text-slate-400 hover:text-white"
           >
             <X size={24} />
           </button>
         </div>
 
-        {/* MODE TOGGLE (Main / Swap) */}
+        {/* MODE TOGGLE */}
         {!readOnly && (
           <div className="flex justify-center p-3 bg-slate-950 border-b border-slate-800">
             <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 w-full max-w-sm shadow-inner">
               <button
                 onClick={() => handleModeChange("main")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all duration-300 ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all duration-300 ${
                   mode === "main"
                     ? "text-white bg-blue-600 shadow-lg"
                     : "text-slate-500 hover:text-slate-300"
@@ -298,7 +287,7 @@ export default function BuildModal({
               </button>
               <button
                 onClick={() => handleModeChange("swap")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all duration-300 ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all duration-300 ${
                   mode === "swap"
                     ? "text-black bg-yellow-500 shadow-lg"
                     : "text-slate-500 hover:text-slate-300"
@@ -312,7 +301,7 @@ export default function BuildModal({
 
         <div className="flex flex-1 overflow-hidden flex-col lg:flex-row">
           {/* LEFT: SLOTS (Sidebar) */}
-          <div className="w-full lg:w-72 bg-slate-950/50 border-r border-slate-800 p-3 overflow-y-auto shrink-0 custom-scrollbar">
+          <div className="w-full lg:w-72 bg-slate-950/50 border-r border-slate-800 p-3 overflow-y-auto shrink-0 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-slate-500">
             <div className="space-y-1.5">
               {SLOT_CONFIG.map((conf) => {
                 const isActive = activeSlot === conf.key;
@@ -383,7 +372,7 @@ export default function BuildModal({
                     type="text"
                     placeholder={`Search ${activeSlot}...`}
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => setFilter("searchTerm", e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 p-2.5 pl-10 rounded-xl text-slate-200 focus:border-yellow-500 outline-none uppercase text-xs font-black italic tracking-widest"
                   />
                 </div>
@@ -399,7 +388,7 @@ export default function BuildModal({
                         {[4, 5, 6, 7, 8].map((t) => (
                           <button
                             key={t}
-                            onClick={() => setSelectedTier(t)}
+                            onClick={() => setFilter("selectedTier", t)}
                             className={`w-8 h-7 text-xs font-black rounded transition ${
                               selectedTier === t
                                 ? "bg-slate-700 text-white shadow"
@@ -424,7 +413,7 @@ export default function BuildModal({
                         ).map((e) => (
                           <button
                             key={e}
-                            onClick={() => setSelectedEnchant(e)}
+                            onClick={() => setFilter("selectedEnchant", e)}
                             className={`w-7 h-7 text-xs font-black rounded transition ${
                               selectedEnchant === e
                                 ? "brightness-125 border border-white/20"
@@ -454,7 +443,7 @@ export default function BuildModal({
             )}
 
             {/* ITEM GRID */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-slate-900">
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-900 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-slate-500">
               {isLoading ? (
                 <div className="flex h-full items-center justify-center flex-col gap-4 text-slate-500">
                   <Loader2 className="animate-spin text-yellow-500" size={48} />
@@ -481,13 +470,23 @@ export default function BuildModal({
                         return (
                           <button
                             key={`${item.id}-${displayTier}-${displayEnchant}`}
-                            onClick={() =>
-                              !readOnly &&
-                              setTempBuild({
+                            onClick={() => {
+                              if (readOnly) return;
+
+                              const newBuild = {
                                 ...tempBuild,
                                 [activeSlot]: fullId,
-                              })
-                            }
+                              };
+
+                              if (
+                                activeSlot === "mainHand" &&
+                                fullId.includes("2H")
+                              ) {
+                                newBuild.offHand = "";
+                              }
+
+                              setTempBuild(newBuild);
+                            }}
                             className={`relative aspect-square bg-slate-950 rounded-xl border-2 transition overflow-hidden ${
                               isSelected
                                 ? "border-yellow-500 ring-4 ring-yellow-500/10 shadow-lg shadow-yellow-500/5"
@@ -530,7 +529,7 @@ export default function BuildModal({
           </div>
           <div className="flex gap-3">
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-800 transition uppercase text-xs tracking-widest italic"
             >
               Cancel

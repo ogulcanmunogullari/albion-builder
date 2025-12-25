@@ -114,9 +114,9 @@ export default function ViewBuildModal({
       {/* Genişliği dual view için max-w-4xl yaptık */}
       <div className="bg-slate-900 w-full max-w-4xl rounded-4xl border border-slate-800 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* HEADER */}
-        <div className="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-800/20">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-yellow-500/10 rounded-2xl text-yellow-500 shadow-inner">
+        <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-slate-800/20">
+          <div className="flex items-center gap-3">
+            <div className="p-4 bg-yellow-500/10 rounded-2xl text-yellow-500 shadow-inner">
               <ShieldCheck size={28} />
             </div>
             <div>
@@ -134,7 +134,7 @@ export default function ViewBuildModal({
         </div>
 
         {/* CONTENT AREA */}
-        <div className="p-6 max-h-[75vh] overflow-y-auto custom-scrollbar bg-linear-to-b from-slate-900 to-slate-950">
+        <div className="p-4 max-h-fit overflow-y-auto custom-scrollbar bg-linear-to-b from-slate-900 to-slate-950">
           <div
             className={`flex flex-col md:flex-row gap-8 ${
               slot.swapBuild ? "divide-x divide-slate-800/50" : ""

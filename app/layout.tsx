@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css"; // @ yerine relative path bazen daha güvenlidir ama sende @ çalışıyordu, hata verirse ./ yap
+import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
@@ -31,7 +31,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        // Buraya bg-slate-950 ve scrollbar sınıflarını ekledik
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-100 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-slate-950 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-600`}
       >
         <Header />
         <main>{children}</main>

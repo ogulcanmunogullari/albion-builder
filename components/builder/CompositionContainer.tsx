@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -15,11 +15,13 @@ import {
   EyeOff,
 } from "lucide-react";
 
-import { IPlayer, IComposition, ICategorizedItems } from "@/types";
+import { IComposition, ICategorizedItems, IPlayer } from "@/types";
 import { getDisplayName } from "@/utils/helpers";
 import { useCompositionStore } from "@/store/useCompositionStore";
+// YENİ UI STORE
+import { useCompositionUiStore } from "@/store/useCompositionUiStore";
 
-// Yeni Componentler
+// Componentler
 import CompHeader from "./CompHeader";
 import SlotItem from "./SlotItem";
 import BuildModal from "@/components/BuildModal";
@@ -37,104 +39,74 @@ export default function CompositionContainer({
   hasAdminPassword = false,
 }: CompositionContainerProps) {
   const router = useRouter();
+
+  // GLOBAL DATA STORE
   const { comp, setComp, resetComp, addPlayer, updateCompDetails } =
     useCompositionStore();
+
+  // LOCAL UI STORE (Tüm useState'lerin yerini aldı)
+  const ui = useCompositionUiStore();
 
   const composition = comp.slots;
   const flattenItems = useMemo(() => Object.values(items).flat(), [items]);
 
-  // --- LOCAL STATE ---
-
-  const [hasAccess, setHasAccess] = useState(
-    () => !initialData?.viewerPassword
-  );
-
-  const [isLocked, setIsLocked] = useState(() => hasAdminPassword);
-
-  const [viewerPassInput, setViewerPassInput] = useState("");
-  const [unlockPassword, setUnlockPassword] = useState("");
-
-  // Header State
-  const [title, setTitle] = useState(initialData?.title || "");
-  const [rallyPoint, setRallyPoint] = useState(initialData?.rallyPoint || "");
-  const [eventTime, setEventTime] = useState(initialData?.eventTime || "");
-
-  // Modal State
-  const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<IPlayer | null>(null);
-  const [showUnlockModal, setShowUnlockModal] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-
-  // --- HATA YÖNETİMİ STATE ---
-  const [errors, setErrors] = useState({
-    title: false,
-    rally: false,
-    time: false,
-  });
-
-  // Save Modal Inputs
-  const [isPublic, setIsPublic] = useState(initialData?.isPublic ?? true);
-  const [viewerPassword, setViewerPassword] = useState(
-    initialData?.viewerPassword || ""
-  );
-  const [newPassword, setNewPassword] = useState("");
-  const [showAdminPass, setShowAdminPass] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
-
-  // --- useEffect State Senkronizasyonu ---
+  // --- BAŞLANGIÇ AYARLARI (useEffect) ---
   useEffect(() => {
+    // 1. Global Veriyi Yükle
     if (initialData) {
       setComp(initialData);
     } else {
       resetComp();
     }
-  }, [initialData, setComp, resetComp]);
+
+    // 2. UI State'ini Başlat (Title, şifreler vs.)
+    ui.initializeUi(initialData, hasAdminPassword);
+
+    // Unmount olunca temizle
+    return () => ui.resetUi();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData, hasAdminPassword]);
 
   // --- ACTIONS ---
   const setComposition = (newSlots: IPlayer[]) =>
     updateCompDetails({ slots: newSlots });
+
   const handlePreSaveValidation = () => {
-    // 1. Durumları kontrol et
     const newErrors = {
-      title: !title.trim(), // Title boş mu?
-      rally: !rallyPoint.trim(), // Rally boş mu?
-      time: !eventTime.trim(), // Time boş mu?
+      title: !ui.title.trim(),
+      rally: !ui.rallyPoint.trim(),
+      time: !ui.eventTime.trim(),
     };
 
-    // 2. Hata state'ini güncelle
-    setErrors(newErrors);
+    ui.setUi({ errors: newErrors });
 
-    // 3. Eğer herhangi bir hata varsa işlemi durdur ve uyarı ver
     if (newErrors.title || newErrors.rally || newErrors.time) {
-      // İsteğe bağlı: Kullanıcıya sesli veya toast mesajı ile de bildirilebilir
-      // alert("Lütfen kırmızı alanları doldurunuz!"); // UX tercihi
-
-      // Sayfanın en üstüne (header'a) kaydır ki hatayı görsün
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
-    // 4. Hata yoksa modalı aç ve şifreyi doldur
-    setNewPassword(unlockPassword);
-    setShowPasswordModal(true);
+    ui.setUi({
+      newPassword: ui.unlockPassword,
+      showPasswordModal: true,
+    });
   };
 
   const handleDragStart = (index: number) =>
-    !isLocked && setDraggedItemIndex(index);
+    !ui.isLocked && ui.setUi({ draggedItemIndex: index });
+
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedItemIndex === null || draggedItemIndex === index) return;
+    if (ui.draggedItemIndex === null || ui.draggedItemIndex === index) return;
     const newComp = [...composition];
-    const draggedItem = newComp[draggedItemIndex];
-    newComp.splice(draggedItemIndex, 1);
+    const draggedItem = newComp[ui.draggedItemIndex];
+    newComp.splice(ui.draggedItemIndex, 1);
     newComp.splice(index, 0, draggedItem);
-    setDraggedItemIndex(index);
+
+    ui.setUi({ draggedItemIndex: index });
     setComposition(newComp);
   };
-  const handleDragEnd = () => setDraggedItemIndex(null);
+
+  const handleDragEnd = () => ui.setUi({ draggedItemIndex: null });
 
   const toggleSwap = (index: number) => {
     const newComp = [...composition];
@@ -161,31 +133,26 @@ export default function CompositionContainer({
     const currentSlots = useCompositionStore.getState().comp.slots;
     const newPlayer = currentSlots[currentSlots.length - 1];
     if (newPlayer) {
-      setEditingPlayerId(newPlayer.id);
-      setIsModalOpen(true);
+      ui.setUi({ editingPlayerId: newPlayer.id, isModalOpen: true });
     }
   };
 
-  // --- DÜZELTİLEN UNLOCK FONKSİYONU ---
   const handleUnlock = async () => {
     if (!initialData?._id) return;
-
-    // Basit uzunluk kontrolü YERİNE API doğrulaması yapıyoruz.
     try {
       const res = await fetch("/api/composition/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: initialData._id,
-          password: unlockPassword,
+          password: ui.unlockPassword,
         }),
       });
 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        setIsLocked(false);
-        setShowUnlockModal(false);
+        ui.setUi({ isLocked: false, showUnlockModal: false });
       } else {
         alert("❌ Wrong Password!");
       }
@@ -198,47 +165,34 @@ export default function CompositionContainer({
   const handleCopyTemplate = () => {
     const baseUrl = window.location.origin;
     const compUrl = `${baseUrl}/composition/${initialData?._id}`;
+    let text = `# ⚔️ ${ui.title.toUpperCase()} ⚔️\n\n`;
 
-    // Header Kısmı
-    let text = `# ⚔️ ${title.toUpperCase()} ⚔️\n\n`;
-
-    // Blockquote ile detaylar
-    if (rallyPoint) text += `📍 **RALLY:** ${rallyPoint}`;
-    if (eventTime && rallyPoint) text += `    |    `;
-    if (eventTime) text += ` ⏰ **TIME:** ${eventTime} UTC `;
+    if (ui.rallyPoint) text += `📍 **RALLY:** ${ui.rallyPoint}`;
+    if (ui.eventTime && ui.rallyPoint) text += `    |    `;
+    if (ui.eventTime) text += ` ⏰ **TIME:** ${ui.eventTime} UTC `;
     text += `\n`;
-    // Link ve Şifre
     text += `> 🔗 **LINK:** ${
       initialData?._id ? `<${compUrl}>` : "Not Saved"
     }\n`;
 
-    if (viewerPassword) text += `> 🔑 **PASS:** \`${viewerPassword}\`\n`;
+    if (ui.viewerPassword) text += `> 🔑 **PASS:** \`${ui.viewerPassword}\`\n`;
 
     text += `\n**📋 Build List:**\n\n`;
-    // Not: ```md bloğunu kaldırdım çünkü resimdeki gibi Bold ve Emoji görünmesi için düz metin lazım.
 
     composition.forEach((slot, index) => {
       const num = (index + 1).toString().padStart(2, "0");
       const icon = slot.roleIcon || "👤";
-
       const mainWp = getDisplayName(slot.weaponId, flattenItems) || "Any";
       const swapWp = slot.swapBuild?.mainHand
         ? getDisplayName(slot.swapBuild.mainHand, flattenItems)
         : null;
 
-      // Temel Yapı: `01` 🛡️ **ROLE**
       text += `\`${num}\` ${icon} **${slot.role.toUpperCase()}**`;
-
-      // --- İSTEDİĞİN MANTIK ---
       if (swapWp) {
-        // Swap varsa: "Main:" ve "Swap:" ayrı ayrı belirtilir
         text += ` - **Main:** ${mainWp}  **Swap:** ${swapWp}`;
       } else {
-        // Swap yoksa: Sadece silah adı yazar, "Main:" yazmaz
         text += ` - ${mainWp}`;
       }
-
-      // İsim alanı
       text += ` @\n`;
     });
 
@@ -267,13 +221,11 @@ export default function CompositionContainer({
   };
 
   const confirmSave = async () => {
-    if (isSaving) return;
-    setIsSaving(true);
+    if (ui.isSaving) return;
+    ui.setUi({ isSaving: true });
 
     const isNewRecord = !initialData?._id;
-
-    // YETKİLENDİRME ŞİFRESİ
-    const passwordPayload = isNewRecord ? newPassword : unlockPassword;
+    const passwordPayload = isNewRecord ? ui.newPassword : ui.unlockPassword;
 
     try {
       const res = await fetch("/api/composition", {
@@ -281,20 +233,13 @@ export default function CompositionContainer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: initialData?._id,
-          title,
-          rallyPoint,
-          eventTime,
-          isPublic,
-          viewerPassword: isPublic ? "" : viewerPassword,
-
-          // 1. Yetki Kanıtı
+          title: ui.title,
+          rallyPoint: ui.rallyPoint,
+          eventTime: ui.eventTime,
+          isPublic: ui.isPublic,
+          viewerPassword: ui.isPublic ? "" : ui.viewerPassword,
           password: passwordPayload,
-
-          // 2. KAYDEDİLECEK ŞİFRE (DÜZELTİLDİ)
-          // Artık undefined kontrolü yapmıyoruz.
-          // Kullanıcı sildiyse "", yazdıysa "yenişifre" gidiyor.
-          nextPassword: newPassword,
-
+          nextPassword: ui.newPassword,
           slots: composition,
         }),
       });
@@ -307,21 +252,20 @@ export default function CompositionContainer({
           if (newId) router.push(`/composition/${newId}`);
           else router.push("/");
         } else {
-          // Sayfa yenilendiğinde yeni şifre (veya şifresizlik) geçerli olacak
           window.location.reload();
         }
       } else {
         alert(`❌ Error: ${data.message || "Authorization failed"}`);
-        setIsSaving(false);
+        ui.setUi({ isSaving: false });
       }
     } catch {
       alert("Save failed!");
-      setIsSaving(false);
+      ui.setUi({ isSaving: false });
     }
   };
 
   // --- VIEWER LOCK SCREEN ---
-  if (!hasAccess && initialData?.viewerPassword) {
+  if (!ui.hasAccess && initialData?.viewerPassword) {
     return (
       <div className="fixed inset-0 bg-slate-950 flex items-center justify-center z-500 p-4 backdrop-blur-md">
         <div className="max-w-sm w-full bg-slate-900 border border-slate-800 p-8 rounded-[40px] text-center space-y-6 shadow-2xl">
@@ -331,15 +275,15 @@ export default function CompositionContainer({
           </h2>
           <input
             type="password"
-            value={viewerPassInput}
-            onChange={(e) => setViewerPassInput(e.target.value)}
+            value={ui.viewerPassInput}
+            onChange={(e) => ui.setUi({ viewerPassInput: e.target.value })}
             className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white outline-none focus:border-red-500 font-bold"
             placeholder="Password..."
           />
           <button
             onClick={() =>
-              viewerPassInput === initialData?.viewerPassword
-                ? setHasAccess(true)
+              ui.viewerPassInput === initialData?.viewerPassword
+                ? ui.setUi({ hasAccess: true })
                 : alert("Wrong Password!")
             }
             className="w-full py-4 bg-red-600 text-white font-black rounded-2xl uppercase tracking-[0.2em] shadow-lg"
@@ -351,34 +295,38 @@ export default function CompositionContainer({
     );
   }
 
+  // --- MAIN RENDER ---
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 lg:p-8 pb-20 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         <CompHeader
-          title={title}
+          title={ui.title}
           setTitle={(val) => {
-            setTitle(val);
-            if (errors.title) setErrors({ ...errors, title: false }); // Yazmaya başlayınca kırmızılığı kaldır
+            ui.setUi({ title: val });
+            if (ui.errors.title)
+              ui.setUi({ errors: { ...ui.errors, title: false } });
           }}
-          rallyPoint={rallyPoint}
+          rallyPoint={ui.rallyPoint}
           setRallyPoint={(val) => {
-            setRallyPoint(val);
-            if (errors.rally) setErrors({ ...errors, rally: false });
+            ui.setUi({ rallyPoint: val });
+            if (ui.errors.rally)
+              ui.setUi({ errors: { ...ui.errors, rally: false } });
           }}
-          eventTime={eventTime}
+          eventTime={ui.eventTime}
           setEventTime={(val) => {
-            setEventTime(val);
-            if (errors.time) setErrors({ ...errors, time: false });
+            ui.setUi({ eventTime: val });
+            if (ui.errors.time)
+              ui.setUi({ errors: { ...ui.errors, time: false } });
           }}
-          isLocked={isLocked}
-          errors={errors}
+          isLocked={ui.isLocked}
+          errors={ui.errors}
         />
 
         <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl">
           {/* Action Bar */}
           <div className="p-4 bg-slate-800/30 grid grid-cols-1 md:grid-cols-3 items-center gap-4 border-b border-slate-800">
             <div className="flex flex-col items-center md:items-start text-center md:text-left">
-              {!isLocked && (
+              {!ui.isLocked && (
                 <span className="text-[9px] text-yellow-600 font-black uppercase italic mt-1 animate-pulse tracking-tighter">
                   Drag & Drop Sort
                 </span>
@@ -388,16 +336,22 @@ export default function CompositionContainer({
             <div className="flex justify-center">
               <button
                 onClick={handleCopyTemplate}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-2.5 rounded-xl font-black text-[11px] flex items-center gap-2 uppercase italic shadow-lg shadow-indigo-600/30 transition-all active:scale-95 border border-indigo-400/20 tracking-widest"
+                disabled={!initialData?._id}
+                className={`bg-indigo-600 text-white px-8 py-2.5 rounded-xl font-black text-[11px] flex items-center gap-2 uppercase italic shadow-lg shadow-indigo-600/30 transition-all border border-indigo-400/20 tracking-widest
+      ${
+        !initialData?._id
+          ? "opacity-50 cursor-not-allowed grayscale" // Kayıtlı değilse: Sönük ve gri
+          : "hover:bg-indigo-500 active:scale-95" // Kayıtlıysa: Efektler aktif
+      }`}
               >
                 <Copy size={16} /> Copy Discord Template
               </button>
             </div>
 
             <div className="flex justify-center md:justify-end gap-2">
-              {isLocked ? (
+              {ui.isLocked ? (
                 <button
-                  onClick={() => setShowUnlockModal(true)}
+                  onClick={() => ui.setUi({ showUnlockModal: true })}
                   className="bg-red-600/10 text-red-500 font-bold py-2 px-4 rounded-xl flex items-center gap-2 transition border border-red-600/20 text-xs uppercase hover:bg-red-600 hover:text-white shadow-inner"
                 >
                   <Lock size={14} /> Admin Access
@@ -413,7 +367,7 @@ export default function CompositionContainer({
                     </button>
                   )}
                   <button
-                    onClick={handlePreSaveValidation} // <--- ARTIK DİREKT MODAL AÇMIYOR, VALIDATION'A GİDİYOR
+                    onClick={handlePreSaveValidation}
                     className="bg-blue-600 hover:bg-blue-500 text-white font-black py-2 px-4 rounded-xl flex items-center gap-2 transition text-xs uppercase shadow-lg shadow-blue-600/20 border border-blue-400/20"
                   >
                     <Save size={14} /> Save Setup
@@ -429,20 +383,18 @@ export default function CompositionContainer({
                 key={slot.id}
                 slot={slot}
                 index={index}
-                isLocked={isLocked}
+                isLocked={ui.isLocked}
                 flattenItems={flattenItems}
-                draggedItemIndex={draggedItemIndex}
+                draggedItemIndex={ui.draggedItemIndex}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
-                onEdit={(id) => {
-                  setEditingPlayerId(id);
-                  setIsModalOpen(true);
-                }}
-                onView={(s) => {
-                  setSelectedSlot(s);
-                  setIsViewModalOpen(true);
-                }}
+                onEdit={(id) =>
+                  ui.setUi({ editingPlayerId: id, isModalOpen: true })
+                }
+                onView={(s) =>
+                  ui.setUi({ selectedSlot: s, isViewModalOpen: true })
+                }
                 onDelete={(id) => {
                   const newComp = composition.filter((p) => p.id !== id);
                   setComposition(newComp);
@@ -453,7 +405,7 @@ export default function CompositionContainer({
             ))}
           </div>
 
-          {!isLocked && (
+          {!ui.isLocked && (
             <button
               onClick={handleAddNewRole}
               className="w-full py-5 bg-slate-800/10 hover:bg-yellow-500/5 text-slate-500 hover:text-yellow-500 transition-all border-t border-slate-800 font-black flex justify-center items-center gap-3 uppercase tracking-[0.4em] text-sm italic active:bg-yellow-500/10"
@@ -465,26 +417,16 @@ export default function CompositionContainer({
       </div>
 
       {/* MODALS */}
-      {editingPlayerId !== null && (
-        <BuildModal
-          isOpen={isModalOpen}
-          onClose={() => {
-            setIsModalOpen(false);
-            setEditingPlayerId(null);
-          }}
-          playerId={editingPlayerId}
-          readOnly={isLocked}
-        />
-      )}
+      {ui.editingPlayerId !== null && <BuildModal />}
       <ViewBuildModal
-        isOpen={isViewModalOpen}
-        onClose={() => setIsViewModalOpen(false)}
-        slot={selectedSlot}
+        isOpen={ui.isViewModalOpen}
+        onClose={() => ui.setUi({ isViewModalOpen: false })}
+        slot={ui.selectedSlot}
         allItems={items}
       />
 
       {/* ADMIN UNLOCK MODAL */}
-      {showUnlockModal && (
+      {ui.showUnlockModal && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-700 backdrop-blur-md p-4 text-center">
           <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-700 w-full max-w-sm text-center space-y-6 shadow-2xl">
             <ShieldAlert size={48} className="mx-auto text-yellow-500" />
@@ -493,15 +435,15 @@ export default function CompositionContainer({
             </h3>
             <input
               type="password"
-              value={unlockPassword}
-              onChange={(e) => setUnlockPassword(e.target.value)}
+              value={ui.unlockPassword}
+              onChange={(e) => ui.setUi({ unlockPassword: e.target.value })}
               onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
               className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-center text-white outline-none focus:border-yellow-500 font-bold tracking-widest"
               placeholder="Admin Password..."
             />
             <div className="flex gap-2">
               <button
-                onClick={() => setShowUnlockModal(false)}
+                onClick={() => ui.setUi({ showUnlockModal: false })}
                 className="flex-1 py-3 text-slate-500 font-black uppercase text-xs tracking-widest transition-colors"
               >
                 Cancel
@@ -518,7 +460,7 @@ export default function CompositionContainer({
       )}
 
       {/* SAVE SETUP MODAL */}
-      {showPasswordModal && (
+      {ui.showPasswordModal && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-600 backdrop-blur-md p-4 text-center">
           <div className="bg-slate-900 p-8 rounded-[40px] border border-slate-700 w-full max-w-md space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <h3 className="text-xl font-black text-white text-center uppercase tracking-[0.3em] italic leading-none">
@@ -528,39 +470,41 @@ export default function CompositionContainer({
               <div className="flex gap-2 p-1.5 bg-slate-950 rounded-3xl border border-slate-800 shadow-inner">
                 <button
                   type="button"
-                  disabled={isSaving}
-                  onClick={() => setIsPublic(true)}
+                  disabled={ui.isSaving}
+                  onClick={() => ui.setUi({ isPublic: true })}
                   className={`flex-1 py-4 rounded-[18px] font-black flex items-center justify-center gap-2 transition-all text-xs tracking-widest ${
-                    isPublic
+                    ui.isPublic
                       ? "bg-yellow-600 text-black shadow-lg shadow-yellow-600/20"
                       : "text-slate-600"
-                  } ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  } ${ui.isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   <Globe size={18} /> PUBLIC
                 </button>
                 <button
                   type="button"
-                  disabled={isSaving}
-                  onClick={() => setIsPublic(false)}
+                  disabled={ui.isSaving}
+                  onClick={() => ui.setUi({ isPublic: false })}
                   className={`flex-1 py-4 rounded-[18px] font-black flex items-center justify-center gap-2 transition-all text-xs tracking-widest ${
-                    !isPublic
+                    !ui.isPublic
                       ? "bg-red-600 text-white shadow-lg shadow-red-600/20"
                       : "text-slate-600"
-                  } ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  } ${ui.isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   <Lock size={18} /> PRIVATE
                 </button>
               </div>
-              {!isPublic && (
+              {!ui.isPublic && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-3 italic tracking-widest">
                     Viewer Password
                   </label>
                   <input
                     type="password"
-                    value={viewerPassword}
-                    onChange={(e) => setViewerPassword(e.target.value)}
-                    disabled={isSaving}
+                    value={ui.viewerPassword}
+                    onChange={(e) =>
+                      ui.setUi({ viewerPassword: e.target.value })
+                    }
+                    disabled={ui.isSaving}
                     className="w-full bg-slate-950 border border-slate-800 p-4 rounded-[20px] text-white outline-none font-bold italic tracking-widest placeholder:text-slate-800 disabled:opacity-50"
                     placeholder="Set viewer pass..."
                   />
@@ -572,21 +516,26 @@ export default function CompositionContainer({
                 </label>
                 <div className="relative">
                   <input
-                    type={showAdminPass ? "text" : "password"} // Type değişiyor
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    disabled={isSaving}
-                    // pr-12 ekledik ki yazı ikona binmesin
+                    type={ui.showAdminPass ? "text" : "password"}
+                    value={ui.newPassword}
+                    onChange={(e) => ui.setUi({ newPassword: e.target.value })}
+                    disabled={ui.isSaving}
                     className="w-full bg-slate-950 border border-slate-800 p-4 pr-12 rounded-[20px] text-white outline-none font-bold italic tracking-widest placeholder:text-slate-800 disabled:opacity-50"
                     placeholder="Set admin password..."
                   />
                   <button
                     type="button"
-                    onClick={() => setShowAdminPass(!showAdminPass)}
-                    disabled={isSaving}
+                    onClick={() =>
+                      ui.setUi({ showAdminPass: !ui.showAdminPass })
+                    }
+                    disabled={ui.isSaving}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
                   >
-                    {showAdminPass ? <EyeOff size={20} /> : <Eye size={20} />}
+                    {ui.showAdminPass ? (
+                      <EyeOff size={20} />
+                    ) : (
+                      <Eye size={20} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -594,10 +543,10 @@ export default function CompositionContainer({
             <div className="flex gap-3 pt-4">
               <button
                 type="button"
-                onClick={() => setShowPasswordModal(false)}
-                disabled={isSaving}
+                onClick={() => ui.setUi({ showPasswordModal: false })}
+                disabled={ui.isSaving}
                 className={`flex-1 py-4 text-slate-500 font-black uppercase text-xs tracking-widest transition-colors ${
-                  isSaving
+                  ui.isSaving
                     ? "opacity-50 cursor-not-allowed"
                     : "hover:text-slate-300"
                 }`}
@@ -607,14 +556,14 @@ export default function CompositionContainer({
               <button
                 type="button"
                 onClick={confirmSave}
-                disabled={isSaving}
+                disabled={ui.isSaving}
                 className={`flex-1 py-4 bg-blue-600 text-white font-black rounded-[22px] uppercase shadow-lg text-xs tracking-widest shadow-blue-600/20 flex items-center justify-center gap-2 ${
-                  isSaving
+                  ui.isSaving
                     ? "bg-blue-600/50 cursor-not-allowed"
                     : "hover:bg-blue-500 active:scale-95 transition-all"
                 }`}
               >
-                {isSaving ? (
+                {ui.isSaving ? (
                   <>
                     <Loader2 className="animate-spin" size={16} /> Saving...
                   </>

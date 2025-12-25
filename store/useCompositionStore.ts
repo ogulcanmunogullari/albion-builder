@@ -56,6 +56,41 @@ interface CompositionState {
   resetComp: () => void;
 }
 
+// 1. Store'un Tipi (Interface)
+interface CompositionUiState {
+  // --- SENİN ARADIĞIN DEĞİŞKENLER BURADA ---
+  hasAccess: boolean;
+  isLocked: boolean; // <--- Burada
+  viewerPassInput: string;
+  unlockPassword: string;
+
+  title: string;
+  rallyPoint: string;
+  eventTime: string;
+
+  isModalOpen: boolean;
+  isViewModalOpen: boolean;
+  showUnlockModal: boolean;
+  showPasswordModal: boolean;
+  editingPlayerId: number | null;
+  selectedSlot: IPlayer | null;
+
+  errors: { title: boolean; rally: boolean; time: boolean };
+
+  isPublic: boolean;
+  viewerPassword: string;
+  newPassword: string;
+  showAdminPass: boolean;
+  isSaving: boolean;
+
+  draggedItemIndex: number | null;
+
+  // --- ACTIONS ---
+  setUi: (partial: Partial<CompositionUiState>) => void;
+  initializeUi: (data: IComposition | undefined, hasAdminPass: boolean) => void;
+  resetUi: () => void;
+}
+
 export const useCompositionStore = create<CompositionState>((set) => ({
   // Başlangıç State'i
   comp: DEFAULT_COMPOSITION,

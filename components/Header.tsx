@@ -43,13 +43,13 @@ export default function Header() {
             href="/search"
             className="flex items-center gap-2 text-slate-400 hover:text-white font-bold text-sm transition"
           >
-            <Search size={18} /> Browse Comps
+            <Search size={18} /> Browse Compositions
           </Link>
           <Link
             href="/create-composition"
             className="flex items-center gap-2 bg-yellow-600/10 text-yellow-500 px-4 py-2 rounded-xl font-bold text-sm transition border border-yellow-600/20"
           >
-            <PlusCircle size={18} /> Create New
+            <PlusCircle size={18} /> Create New Composition
           </Link>
         </nav>
       </div>
